@@ -1,0 +1,37 @@
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Byte-compiled / cache
+*.cache
+*.pkl
+*.joblib
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Local settings
+*.env
+.env.*
+config.local.yaml
+
+# IDE folders
+.vscode/
+.idea/
+
+# Output folders
+dist/
+build/
+*.egg-info/

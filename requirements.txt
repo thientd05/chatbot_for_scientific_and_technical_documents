@@ -1,0 +1,29 @@
+# pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+transformers==4.46.3
+tokenizers==0.20.3
+einops
+addict 
+easydict
+accelerate>=0.26.0
+bitsandbytes
+langchain-huggingface
+langchain-community
+pypdf
+pdf2image
+pillow
+opencv-python
+numpy
+pandas
+tqdm
+sentence-transformers
+pymilvus
+# MAX_JOBS=3 pip install flash-attn==2.7.3 --no-build-isolation (use 3 cores to avoid crashing)
+
+# if error, try:
+# pip install --upgrade setuptools wheel (err: ModuleNotFoundError: No module named 'wheel')
+# sudo apt install python3.12-dev (err: #include <Python.h>)
+# sudo apt install ninja-build (no err but to speed up processing: Attempted to use ninja as the BuildExtension backend but we could not find ninja.. Falling back to using the slow distutils backend.)
+
+# or:
+# download file .whl manually depending on flash-attn, cuda, torch, python version on https://github.com/mjun0812/flash-attention-prebuild-wheels/blob/main/docs/packages.md#flash-attention-273
+# then pip install this_dowloaded_file.whl
