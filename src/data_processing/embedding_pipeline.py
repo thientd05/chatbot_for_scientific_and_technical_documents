@@ -49,13 +49,31 @@ class DocumentEmbedder:
         self.collection.load()
 
     def _create_collection(self, dim: int):
-        """Create a new Milvus collection with the specified schema."""
+        """Create a new Milvus collection with rich metadata schema."""
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=dim)
+            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=dim),
+            # Metadata fields for better reranking
+            FieldSchema(name="section", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="subsection", dtype=DataType.VARCHAR, max_length=256),
+            FieldSchema(name="content_type", dtype=DataType.VARCHAR, max_length=50),
+            FieldSchema(name="hierarchy_level", dtype=DataType.INT8),
+            FieldSchema(name="importance_score", dtype=DataType.FLOAT),
+            FieldSchema(name="citation_count", dtype=DataType.INT32),
+            FieldSchema(name="equation_count", dtype=DataType.INT32),
+            FieldSchema(name="is_abstract", dtype=DataType.BOOL),
+            FieldSchema(name="is_conclusion", dtype=DataType.BOOL),
+            FieldSchema(name="word_count", dtype=DataType.INT32),
+            FieldSchema(name="chunk_index", dtype=DataType.INT32),
+            # Source metadata
+            FieldSchema(name="source_file", dtype=DataType.VARCHAR, max_length=512),
+            FieldSchema(name="processing_timestamp", dtype=DataType.VARCHAR, max_length=30),
         ]
-        schema = CollectionSchema(fields=fields, description="Scientific paper chunks collection")
+        schema = CollectionSchema(
+            fields=fields,
+            description="Scientific paper chunks collection with rich metadata"
+        )
         Collection(self.collection_name, schema)
 
     def _get_embeddings(self, texts: List[str]) -> np.ndarray:
@@ -91,57 +109,59 @@ class DocumentEmbedder:
             raise
 
     def process_document(self, text: str, metadata: Optional[Dict] = None, batch_size: int = 32):
-        """Process a document by splitting it and generating embeddings."""
+        """Process a document by splitting it with metadata and generating embeddings."""
         logger.info("Starting document processing")
         
-        # Split text into chunks
-        chunks = self.text_splitter.split_text(text)
-        logger.info(f"Split document into {len(chunks)} chunks")
+        # Split text into chunks with metadata
+        chunks_with_metadata = self.text_splitter.split_text(text)
+        logger.info(f"Split document into {len(chunks_with_metadata)} chunks with metadata")
         
-        # Add metadata to track chunk positions and sections
-        enriched_chunks = []
-        current_section = "unknown"
-        for i, chunk in enumerate(chunks):
-            # Try to identify the section from the chunk content
-            section_headers = [
-                "Abstract", "Introduction", "Background", "Method", 
-                "Results", "Discussion", "Conclusion", "References"
-            ]
-            for header in section_headers:
-                if chunk.startswith(f"# {header}") or chunk.startswith(f"## {header}"):
-                    current_section = header
-                    break
-            
-            chunk_metadata = {
-                "chunk_id": i,
-                "section": current_section,
-                "position": i / len(chunks),  # Normalized position in document
-                **(metadata or {})  # Include any additional metadata
-            }
-            enriched_chunks.append((chunk, chunk_metadata))
+        # Add document-level metadata
+        doc_metadata = metadata or {}
+        source_file = doc_metadata.get("source_file", "unknown")
+        processing_timestamp = doc_metadata.get("processing_timestamp", datetime.datetime.now().isoformat())
         
         # Process chunks in batches
         total_processed = 0
-        for i in range(0, len(enriched_chunks), batch_size):
-            batch = enriched_chunks[i:i + batch_size]
+        for i in range(0, len(chunks_with_metadata), batch_size):
+            batch = chunks_with_metadata[i:i + batch_size]
             batch_chunks = [item[0] for item in batch]
-            batch_metadata = [item[1] for item in batch]
+            batch_chunk_metadata = [item[1] for item in batch]
             
             batch_embeddings = self._get_embeddings(batch_chunks)
             
-            # Insert into Milvus with metadata
-            entities = [
-                {
+            # Insert into Milvus with full metadata
+            entities = []
+            for chunk, chunk_meta, embedding in zip(
+                batch_chunks,
+                batch_chunk_metadata,
+                batch_embeddings
+            ):
+                entity = {
                     "text": chunk,
                     "embeddings": embedding.tolist(),
-                    "metadata": str(meta)  # Convert metadata to string for storage
+                    # Chunk-level metadata
+                    "section": chunk_meta.get("section", "unknown"),
+                    "subsection": chunk_meta.get("subsection", ""),
+                    "content_type": chunk_meta.get("content_type", "text"),
+                    "hierarchy_level": chunk_meta.get("hierarchy_level", 0),
+                    "importance_score": chunk_meta.get("importance_score", 0.5),
+                    "citation_count": chunk_meta.get("citation_count", 0),
+                    "equation_count": chunk_meta.get("equation_count", 0),
+                    "is_abstract": chunk_meta.get("is_abstract", False),
+                    "is_conclusion": chunk_meta.get("is_conclusion", False),
+                    "word_count": chunk_meta.get("word_count", 0),
+                    "chunk_index": chunk_meta.get("chunk_index", i),
+                    # Source metadata
+                    "source_file": source_file,
+                    "processing_timestamp": processing_timestamp,
                 }
-                for chunk, embedding, meta in zip(batch_chunks, batch_embeddings, batch_metadata)
-            ]
+                entities.append(entity)
+            
             self.collection.insert(entities)
             
             total_processed += len(batch)
-            logger.info(f"Processed {total_processed}/{len(chunks)} chunks")
+            logger.info(f"Processed {total_processed}/{len(chunks_with_metadata)} chunks")
         
         # Flush to ensure data is written
         self.collection.flush()
