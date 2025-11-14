@@ -1,232 +1,306 @@
-from typing import List, Optional, Dict
-import torch
-from transformers import AutoTokenizer, AutoModel
-from pymilvus import connections, Collection, CollectionSchema, FieldSchema, DataType, utility
-import numpy as np
-from text_splitter import BoundaryAwareTextSplitter
+"""
+Embedding pipeline sử dụng BAAI/bge-large-en-v1.5 và FAISS
+"""
+
 import os
-import logging
-import datetime
+import json
+import numpy as np
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass, asdict
+import pickle
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from sentence_transformers import SentenceTransformer
+import faiss
 
-class DocumentEmbedder:
-    def __init__(
-        self,
-        model_name: str = "BAAI/bge-large-en-v1.5",
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        collection_name: str = "scientific_papers",
-        dim: int = 1024,
-        milvus_host: str = "localhost",
-        milvus_port: int = 19530,
-        chunk_size: int = 512,
-        chunk_overlap: int = 50
-    ):
-        logger.info(f"Initializing DocumentEmbedder with model: {model_name}")
-        
-        # Initialize the embedding model
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
-        self.model.to(device)
-        self.device = device
-        
-        # Initialize text splitter
-        self.text_splitter = BoundaryAwareTextSplitter(
-            chunk_size=512,
-            chunk_overlap=50
-        )
-        
-        # Connect to Milvus
-        connections.connect(host=milvus_host, port=milvus_port)
-        
-        # Create collection if it doesn't exist
-        self.collection_name = collection_name
-        if not utility.has_collection(collection_name):
-            self._create_collection(dim)
-        
-        self.collection = Collection(collection_name)
-        self.collection.load()
 
-    def _create_collection(self, dim: int):
-        """Create a new Milvus collection with rich metadata schema."""
-        fields = [
-            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=dim),
-            # Metadata fields for better reranking
-            FieldSchema(name="section", dtype=DataType.VARCHAR, max_length=256),
-            FieldSchema(name="subsection", dtype=DataType.VARCHAR, max_length=256),
-            FieldSchema(name="content_type", dtype=DataType.VARCHAR, max_length=50),
-            FieldSchema(name="hierarchy_level", dtype=DataType.INT8),
-            FieldSchema(name="importance_score", dtype=DataType.FLOAT),
-            FieldSchema(name="citation_count", dtype=DataType.INT32),
-            FieldSchema(name="equation_count", dtype=DataType.INT32),
-            FieldSchema(name="is_abstract", dtype=DataType.BOOL),
-            FieldSchema(name="is_conclusion", dtype=DataType.BOOL),
-            FieldSchema(name="word_count", dtype=DataType.INT32),
-            FieldSchema(name="chunk_index", dtype=DataType.INT32),
-            # Source metadata
-            FieldSchema(name="source_file", dtype=DataType.VARCHAR, max_length=512),
-            FieldSchema(name="processing_timestamp", dtype=DataType.VARCHAR, max_length=30),
-        ]
-        schema = CollectionSchema(
-            fields=fields,
-            description="Scientific paper chunks collection with rich metadata"
-        )
-        Collection(self.collection_name, schema)
+@dataclass
+class ChunkMetadata:
+    """Lưu trữ metadata cho mỗi chunk"""
+    chunk_id: int  # ID của chunk
+    content: str  # Nội dung chunk
+    heading: Optional[str]  # Tiêu đề cha
 
-    def _get_embeddings(self, texts: List[str]) -> np.ndarray:
-        """Generate embeddings for a list of text chunks."""
-        # Tokenize and encode text
-        encoded_input = self.tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=512,
-            return_tensors='pt'
-        ).to(self.device)
-        
-        # Generate embeddings
-        with torch.no_grad():
-            model_output = self.model(**encoded_input)
-            # Use CLS token embedding
-            embeddings = model_output.last_hidden_state[:, 0]
-            # Normalize embeddings
-            embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-        
-        return embeddings.cpu().numpy()
 
-    def read_scientific_paper(self, file_path: str) -> str:
-        """Read and preprocess the scientific paper from final_text.txt"""
-        logger.info(f"Reading scientific paper from: {file_path}")
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            return content
-        except Exception as e:
-            logger.error(f"Error reading file {file_path}: {str(e)}")
-            raise
+class EmbeddingPipeline:
+    """
+    Pipeline để embedding text chunks và lưu vào FAISS
+    
+    Attributes:
+        model_name: Tên model sử dụng (mặc định: BAAI/bge-large-en-v1.5)
+        embedding_dim: Dimension của embedding (1024 cho BGE large)
+        model: SentenceTransformer model
+        index: FAISS index
+        metadata_list: Danh sách metadata tương ứng với vectors
+    """
+    
+    def __init__(self, model_name: str = "BAAI/bge-large-en-v1.5"):
+        """
+        Khởi tạo EmbeddingPipeline
+        
+        Args:
+            model_name: Tên model từ HuggingFace (mặc định: BAAI/bge-large-en-v1.5)
+        """
+        self.model_name = model_name
+        self.embedding_dim = 1024  # BGE large có 1024 dimensions
+        
+        print(f"📥 Loading model: {model_name}")
+        self.model = SentenceTransformer(model_name)
+        
+        # FAISS index sử dụng L2 distance
+        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        
+        # Lưu metadata tương ứng với mỗi vector
+        self.metadata_list: List[ChunkMetadata] = []
+        
+        print(f"✅ Model loaded. Embedding dimension: {self.embedding_dim}")
+    
+    def embed_chunks(self, chunks: List[Dict]) -> np.ndarray:
+        """
+        Embed danh sách chunks
+        
+        Args:
+            chunks: Danh sách dict có keys 'content' và 'metadata'
+        
+        Returns:
+            np.ndarray: Ma trận embedding (n_chunks, embedding_dim)
+        """
+        print(f"\n📊 Embedding {len(chunks)} chunks...")
+        
+        # Trích xuất content từ chunks
+        contents = [chunk['content'] for chunk in chunks]
+        
+        # Embed sử dụng model
+        embeddings = self.model.encode(contents, show_progress_bar=True)
+        
+        # Chuyển thành float32 cho FAISS
+        embeddings = np.array(embeddings, dtype=np.float32)
+        
+        print(f"✅ Embedding completed. Shape: {embeddings.shape}")
+        
+        return embeddings
+    
+    def add_chunks(self, chunks: List[Dict]) -> None:
+        """
+        Thêm chunks vào FAISS index
+        
+        Args:
+            chunks: Danh sách dict có keys 'content' và 'metadata'
+        """
+        # Embed chunks
+        embeddings = self.embed_chunks(chunks)
+        
+        # Thêm vào FAISS index
+        self.index.add(embeddings)
+        
+        # Lưu metadata
+        for i, chunk in enumerate(chunks):
+            metadata = ChunkMetadata(
+                chunk_id=len(self.metadata_list) + i,
+                content=chunk['content'],
+                heading=chunk['metadata'].get('heading')
+            )
+            self.metadata_list.append(metadata)
+        
+        print(f"✅ Added {len(chunks)} chunks to index")
+        print(f"   Total chunks in index: {len(self.metadata_list)}")
+    
+    def search(self, query: str, top_k: int = 5) -> List[Dict]:
+        """
+        Tìm kiếm similar chunks cho query
+        
+        Args:
+            query: Text query
+            top_k: Số chunks cần lấy
+        
+        Returns:
+            List[Dict]: Danh sách kết quả với keys:
+                - chunk_id: ID của chunk
+                - content: Nội dung chunk
+                - heading: Tiêu đề cha
+                - distance: L2 distance từ query
+                - similarity: Cosine similarity (0-1, higher is better)
+        """
+        # Embed query
+        query_embedding = self.model.encode([query], show_progress_bar=False)
+        query_embedding = np.array(query_embedding, dtype=np.float32)
+        
+        # Search in FAISS
+        distances, indices = self.index.search(query_embedding, top_k)
+        
+        # Lấy metadata từ indices
+        results = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if idx < len(self.metadata_list):
+                metadata = self.metadata_list[idx]
+                
+                # Tính cosine similarity từ L2 distance
+                # L2_distance = sqrt(sum((a-b)^2))
+                # cosine_similarity = 1 - L2_distance^2 / (2 * dim)
+                # Hoặc sử dụng công thức: similarity = 1 / (1 + distance)
+                similarity = 1.0 / (1.0 + distance)
+                
+                results.append({
+                    'chunk_id': metadata.chunk_id,
+                    'content': metadata.content,
+                    'heading': metadata.heading,
+                    'distance': float(distance),
+                    'similarity': float(similarity)
+                })
+        
+        return results
+    
+    def save(self, save_dir: str) -> None:
+        """
+        Lưu FAISS index và metadata
+        
+        Args:
+            save_dir: Đường dẫn thư mục để lưu
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Lưu FAISS index
+        index_path = os.path.join(save_dir, 'faiss_index.bin')
+        faiss.write_index(self.index, index_path)
+        print(f"✅ Saved FAISS index to: {index_path}")
+        
+        # Lưu metadata
+        metadata_path = os.path.join(save_dir, 'metadata.pkl')
+        with open(metadata_path, 'wb') as f:
+            pickle.dump(self.metadata_list, f)
+        print(f"✅ Saved metadata to: {metadata_path}")
+        
+        # Lưu metadata dưới dạng JSON để dễ đọc
+        metadata_json_path = os.path.join(save_dir, 'metadata.json')
+        metadata_json = [asdict(m) for m in self.metadata_list]
+        with open(metadata_json_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata_json, f, ensure_ascii=False, indent=2)
+        print(f"✅ Saved metadata (JSON) to: {metadata_json_path}")
+        
+        # Lưu config
+        config = {
+            'model_name': self.model_name,
+            'embedding_dim': self.embedding_dim,
+            'num_chunks': len(self.metadata_list)
+        }
+        config_path = os.path.join(save_dir, 'config.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        print(f"✅ Saved config to: {config_path}")
+    
+    def load(self, save_dir: str) -> None:
+        """
+        Load FAISS index và metadata
+        
+        Args:
+            save_dir: Đường dẫn thư mục để load
+        """
+        # Load FAISS index
+        index_path = os.path.join(save_dir, 'faiss_index.bin')
+        self.index = faiss.read_index(index_path)
+        print(f"✅ Loaded FAISS index from: {index_path}")
+        
+        # Load metadata
+        metadata_path = os.path.join(save_dir, 'metadata.pkl')
+        with open(metadata_path, 'rb') as f:
+            self.metadata_list = pickle.load(f)
+        print(f"✅ Loaded metadata from: {metadata_path}")
+        print(f"   Total chunks: {len(self.metadata_list)}")
+    
+    def get_statistics(self) -> Dict:
+        """
+        Lấy thống kê về index
+        
+        Returns:
+            Dict: Thống kê bao gồm:
+                - num_vectors: Số vectors trong index
+                - embedding_dim: Dimension của mỗi vector
+                - num_chunks: Số chunks
+                - headings: Dict đếm chunks theo heading
+        """
+        # Đếm chunks theo heading
+        heading_counts = {}
+        for metadata in self.metadata_list:
+            heading = metadata.heading or 'N/A'
+            heading_counts[heading] = heading_counts.get(heading, 0) + 1
+        
+        return {
+            'num_vectors': self.index.ntotal,
+            'embedding_dim': self.embedding_dim,
+            'num_chunks': len(self.metadata_list),
+            'headings': heading_counts
+        }
+    
+    def print_statistics(self) -> None:
+        """In thống kê index"""
+        stats = self.get_statistics()
+        
+        print("\n" + "=" * 80)
+        print("📊 EMBEDDING INDEX STATISTICS")
+        print("=" * 80)
+        print(f"Number of vectors: {stats['num_vectors']}")
+        print(f"Embedding dimension: {stats['embedding_dim']}")
+        print(f"Number of chunks: {stats['num_chunks']}")
+        print(f"\n📋 Chunks by heading (top 10):")
+        
+        for heading, count in sorted(stats['headings'].items(), 
+                                     key=lambda x: x[1], 
+                                     reverse=True)[:10]:
+            heading_display = heading[:60] + '...' if len(heading) > 60 else heading
+            print(f"  '{heading_display}': {count} chunks")
+        
+        print("=" * 80 + "\n")
 
-    def process_document(self, text: str, metadata: Optional[Dict] = None, batch_size: int = 32):
-        """Process a document by splitting it with metadata and generating embeddings."""
-        logger.info("Starting document processing")
-        
-        # Split text into chunks with metadata
-        chunks_with_metadata = self.text_splitter.split_text(text)
-        logger.info(f"Split document into {len(chunks_with_metadata)} chunks with metadata")
-        
-        # Add document-level metadata
-        doc_metadata = metadata or {}
-        source_file = doc_metadata.get("source_file", "unknown")
-        processing_timestamp = doc_metadata.get("processing_timestamp", datetime.datetime.now().isoformat())
-        
-        # Process chunks in batches
-        total_processed = 0
-        for i in range(0, len(chunks_with_metadata), batch_size):
-            batch = chunks_with_metadata[i:i + batch_size]
-            batch_chunks = [item[0] for item in batch]
-            batch_chunk_metadata = [item[1] for item in batch]
-            
-            batch_embeddings = self._get_embeddings(batch_chunks)
-            
-            # Insert into Milvus with full metadata
-            entities = []
-            for chunk, chunk_meta, embedding in zip(
-                batch_chunks,
-                batch_chunk_metadata,
-                batch_embeddings
-            ):
-                entity = {
-                    "text": chunk,
-                    "embeddings": embedding.tolist(),
-                    # Chunk-level metadata
-                    "section": chunk_meta.get("section", "unknown"),
-                    "subsection": chunk_meta.get("subsection", ""),
-                    "content_type": chunk_meta.get("content_type", "text"),
-                    "hierarchy_level": chunk_meta.get("hierarchy_level", 0),
-                    "importance_score": chunk_meta.get("importance_score", 0.5),
-                    "citation_count": chunk_meta.get("citation_count", 0),
-                    "equation_count": chunk_meta.get("equation_count", 0),
-                    "is_abstract": chunk_meta.get("is_abstract", False),
-                    "is_conclusion": chunk_meta.get("is_conclusion", False),
-                    "word_count": chunk_meta.get("word_count", 0),
-                    "chunk_index": chunk_meta.get("chunk_index", i),
-                    # Source metadata
-                    "source_file": source_file,
-                    "processing_timestamp": processing_timestamp,
-                }
-                entities.append(entity)
-            
-            self.collection.insert(entities)
-            
-            total_processed += len(batch)
-            logger.info(f"Processed {total_processed}/{len(chunks_with_metadata)} chunks")
-        
-        # Flush to ensure data is written
-        self.collection.flush()
-        logger.info("Document processing completed successfully")
 
-    def search(
-        self,
-        query: str,
-        top_k: int = 5,
-        score_threshold: float = 0.5
-    ) -> List[dict]:
-        """Search for similar chunks using the query."""
-        # Generate query embedding
-        query_embedding = self._get_embeddings([query])[0]
-        
-        # Search in Milvus
-        search_params = {"metric_type": "IP", "params": {"nprobe": 10}}
-        results = self.collection.search(
-            data=[query_embedding.tolist()],
-            anns_field="embeddings",
-            param=search_params,
-            limit=top_k,
-            output_fields=["text"]
-        )
-        
-        # Format results
-        matches = []
-        for hits in results:
-            for hit in hits:
-                if hit.score >= score_threshold:
-                    matches.append({
-                        "text": hit.entity.get("text"),
-                        "score": hit.score
-                    })
-        
-        return matches
+def load_chunks_from_jsonl(jsonl_path: str) -> List[Dict]:
+    """
+    Load chunks từ JSONL file
+    
+    Args:
+        jsonl_path: Đường dẫn đến file JSONL
+    
+    Returns:
+        List[Dict]: Danh sách chunks
+    """
+    chunks = []
+    with open(jsonl_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                chunk = json.loads(line)
+                chunks.append(chunk)
+    
+    print(f"✅ Loaded {len(chunks)} chunks from {jsonl_path}")
+    return chunks
 
-    def process_scientific_paper(self, file_path: str, paper_metadata: Optional[Dict] = None):
-        """Process a scientific paper from file and store in vector database"""
-        try:
-            # Read and process the paper
-            content = self.read_scientific_paper(file_path)
-            
-            # Add basic paper metadata if not provided
-            if paper_metadata is None:
-                paper_metadata = {
-                    "source_file": file_path,
-                    "paper_type": "scientific_paper",
-                    "processing_timestamp": datetime.datetime.now().isoformat()
-                }
-            
-            # Process the document with metadata
-            self.process_document(content, metadata=paper_metadata)
-            logger.info(f"Successfully processed paper: {file_path}")
-            
-        except Exception as e:
-            logger.error(f"Error processing paper {file_path}: {str(e)}")
-            raise
 
-    def close(self):
-        """Clean up connections."""
-        try:
-            self.collection.release()
-            connections.disconnect("default")
-            logger.info("Successfully closed all connections")
-        except Exception as e:
-            logger.error(f"Error closing connections: {str(e)}")
-            raise
+def process_and_embed(
+    chunks_jsonl_path: str,
+    output_dir: str,
+    model_name: str = "BAAI/bge-large-en-v1.5"
+) -> EmbeddingPipeline:
+    """
+    Hàm tiện lợi: Load chunks từ JSONL và tạo embedding index
+    
+    Args:
+        chunks_jsonl_path: Đường dẫn đến chunks.jsonl
+        output_dir: Đường dẫn thư mục output
+        model_name: Tên model
+    
+    Returns:
+        EmbeddingPipeline: Pipeline đã embedding
+    """
+    # Load chunks
+    chunks = load_chunks_from_jsonl(chunks_jsonl_path)
+    
+    # Tạo pipeline
+    pipeline = EmbeddingPipeline(model_name=model_name)
+    
+    # Thêm chunks vào index
+    pipeline.add_chunks(chunks)
+    
+    # In thống kê
+    pipeline.print_statistics()
+    
+    # Lưu
+    pipeline.save(output_dir)
+    
+    return pipeline
