@@ -179,10 +179,7 @@ def test_retriever():
     
     # Test queries
     test_queries = [
-        "attention mechanism",
-        "transformer architecture",
-        "neural networks",
-        "self-attention",
+        "explain positional encoding",
     ]
     
     print("\n" + "=" * 80)
@@ -190,7 +187,7 @@ def test_retriever():
     print("=" * 80)
     
     for query in test_queries:
-        results = retriever.search(query, top_k=5)
+        results = retriever.search(query, top_k=3)
         
         # Print results
         print("-" * 80)
