@@ -100,51 +100,6 @@ class EmbeddingPipeline:
         print(f"✅ Added {len(chunks)} chunks to index")
         print(f"   Total chunks in index: {len(self.metadata_list)}")
     
-    def search(self, query: str, top_k: int = 5) -> List[Dict]:
-        """
-        Tìm kiếm similar chunks cho query
-        
-        Args:
-            query: Text query
-            top_k: Số chunks cần lấy
-        
-        Returns:
-            List[Dict]: Danh sách kết quả với keys:
-                - chunk_id: ID của chunk
-                - content: Nội dung chunk
-                - heading: Tiêu đề cha
-                - distance: L2 distance từ query
-                - similarity: Cosine similarity (0-1, higher is better)
-        """
-        # Embed query
-        query_embedding = self.model.encode([query], show_progress_bar=False)
-        query_embedding = np.array(query_embedding, dtype=np.float32)
-        
-        # Search in FAISS
-        distances, indices = self.index.search(query_embedding, top_k)
-        
-        # Lấy metadata từ indices
-        results = []
-        for idx, distance in zip(indices[0], distances[0]):
-            if idx < len(self.metadata_list):
-                metadata = self.metadata_list[idx]
-                
-                # Tính cosine similarity từ L2 distance
-                # L2_distance = sqrt(sum((a-b)^2))
-                # cosine_similarity = 1 - L2_distance^2 / (2 * dim)
-                # Hoặc sử dụng công thức: similarity = 1 / (1 + distance)
-                similarity = 1.0 / (1.0 + distance)
-                
-                results.append({
-                    'chunk_id': metadata.chunk_id,
-                    'content': metadata.content,
-                    'heading': metadata.heading,
-                    'distance': float(distance),
-                    'similarity': float(similarity)
-                })
-        
-        return results
-    
     def save(self, save_dir: str) -> None:
         """
         Lưu FAISS index và metadata
