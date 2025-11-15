@@ -6,8 +6,10 @@ addict
 easydict
 accelerate>=0.26.0
 bitsandbytes
+langchain
 langchain-huggingface
 langchain-community
+langchain-text-splitters
 pypdf
 pdf2image
 pillow
@@ -17,6 +19,7 @@ pandas
 tqdm
 sentence-transformers
 pymilvus
+faiss-cpu
 # MAX_JOBS=3 pip install flash-attn==2.7.3 --no-build-isolation (use 3 cores to avoid crashing)
 
 # if error, try:
