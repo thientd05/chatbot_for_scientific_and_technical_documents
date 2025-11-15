@@ -88,10 +88,11 @@ class EmbeddingPipeline:
         # Thêm vào FAISS index
         self.index.add(embeddings)
         
-        # Lưu metadata
+        # Lưu metadata với chunk_id tăng liên tục từ 0
+        start_chunk_id = len(self.metadata_list)
         for i, chunk in enumerate(chunks):
             metadata = ChunkMetadata(
-                chunk_id=len(self.metadata_list) + i,
+                chunk_id=start_chunk_id + i,
                 content=chunk['content'],
                 heading=chunk['metadata'].get('heading')
             )
@@ -239,7 +240,7 @@ def process_and_embed(
 
 if __name__ == "__main__":
     process_and_embed(
-        chunks_jsonl_path="../../data/splitted/chunks.jsonl",
-        output_dir="../../data/embeddings",
+        chunks_jsonl_path="/home/thienta/HUST_20235839/AI/rag/data/splitted/chunks.jsonl",
+        output_dir="/home/thienta/HUST_20235839/AI/rag/data/embeddings",
         model_name="BAAI/bge-large-en-v1.5"
     )
