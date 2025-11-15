@@ -32,6 +32,7 @@ class DeviceManager:
     def get_optimal_device() -> tuple[str, int]:
         """
         Xác định thiết bị tối ưu dựa trên GPU VRAM có sẵn
+        Cố gắng khai thác tối đa GPU, chỉ sử dụng CPU cho phần còn lại
         
         Returns:
             tuple: (device_name, n_gpu_layers)
@@ -49,21 +50,33 @@ class DeviceManager:
                 
                 logger.info(f"✅ CUDA available - GPU VRAM: {total_memory_gb:.2f}GB")
                 
-                # Tối ưu cho Phi-3.1-mini với 4GB VRAM
-                # Mô hình kích thước: ~2.39GB (Q4_K_M quant)
-                # KV cache + overhead: ~1.5GB
-                # Total: ~3.9GB
+                # Phi-3.1-mini-4k-instruct-GGUF kích thước:
+                # - Model base: ~2.39GB (Q4_K_M quant)
+                # - KV cache: ~0.5-1.0GB (tùy context length và batch size)
+                # - Overhead: ~0.2GB
+                # - Tổng: ~3.0-3.6GB
                 
-                if total_memory_gb >= 4.0:
-                    device = "cuda"
-                    # Cho GPU 4GB, đẩy ~20-24 layers (mô hình có ~32 layers)
-                    n_gpu_layers = 20
-                    logger.info(f"🚀 Optimizing for 4GB GPU: using {n_gpu_layers} GPU layers")
-                elif total_memory_gb >= 8.0:
-                    device = "cuda"
-                    n_gpu_layers = -1  # All layers
-                    logger.info(f"🚀 Optimizing for 8GB+ GPU: using all GPU layers")
+                device = "cuda"
+                
+                if total_memory_gb >= 6.0:
+                    # GPU 6GB+: đẩy tất cả layers (mô hình có 32 layers)
+                    n_gpu_layers = -1
+                    logger.info(f"🚀 GPU {total_memory_gb:.2f}GB: Pushing ALL layers to GPU")
+                elif total_memory_gb >= 4.0:
+                    # GPU 4GB: cân bằng tốt nhất
+                    # Đẩy 28-32 layers để tối ưu hóa GPU
+                    n_gpu_layers = 32  # Push all layers, rely on KV cache management
+                    logger.info(f"🚀 GPU {total_memory_gb:.2f}GB: Pushing {n_gpu_layers} layers to GPU (maximize GPU usage)")
+                elif total_memory_gb >= 3.0:
+                    # GPU 3GB: push as many layers as possible
+                    n_gpu_layers = 24
+                    logger.info(f"🚀 GPU {total_memory_gb:.2f}GB: Pushing {n_gpu_layers} layers to GPU (CPU will handle overflow)")
+                elif total_memory_gb >= 2.0:
+                    # GPU 2GB: minimize but still use GPU
+                    n_gpu_layers = 16
+                    logger.info(f"⚠️  GPU {total_memory_gb:.2f}GB: Pushing {n_gpu_layers} layers to GPU (heavy CPU fallback)")
                 else:
+                    # GPU < 2GB: use CPU mostly
                     device = "cpu"
                     logger.warning(f"⚠️  GPU VRAM too small ({total_memory_gb:.2f}GB), using CPU")
                     
@@ -74,7 +87,7 @@ class DeviceManager:
         # Kiểm tra Metal (Apple Silicon)
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             device = "mps"
-            n_gpu_layers = -1  # Macs typically have good GPU
+            n_gpu_layers = -1  # Macs typically have good GPU, push all layers
             logger.info("✅ Apple Metal GPU detected - using all GPU layers")
         
         else:
@@ -163,7 +176,7 @@ class Generator:
     
     def generate(
         self,
-        prompt: str,
+        messages: List[Dict[str, str]],
         max_tokens: int = 512,
         temperature: float = 0.7,
         top_p: float = 0.95,
@@ -171,12 +184,24 @@ class Generator:
         repeat_penalty: float = 1.1,
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
-    ) -> str:
+    ):
         """
-        Generate text từ prompt
+        Generate text từ messages (Phi-3 chat format)
+        
+        Format messages theo Phi-3 chat template:
+        <|system|>
+        {system_message}
+        <|end|>
+        <|user|>
+        {user_message}
+        <|end|>
+        <|assistant|>
+        {assistant_response}
+        <|end|>
         
         Args:
-            prompt: Input prompt
+            messages: List of message dicts with "role" and "content"
+                     Roles: "system", "user", "assistant"
             max_tokens: Maximum tokens để generate (default: 512)
             temperature: Sampling temperature (default: 0.7)
             top_p: Nucleus sampling parameter (default: 0.95)
@@ -184,19 +209,42 @@ class Generator:
             repeat_penalty: Penalize repetition (default: 1.1)
             stop_sequences: List stop sequences (default: None)
             stream: Stream output token-by-token (default: False)
+                   If True, returns Generator yielding tokens
+                   If False, returns str with full response
         
         Returns:
-            str: Generated text
+            str or Generator: Generated text (assistant response)
+                - If stream=False: str
+                - If stream=True: Generator yielding str tokens
+        
+        Example:
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "What is AI?"}
+            ]
+            
+            # Without streaming
+            response = generator.generate(messages)
+            print(response)
+            
+            # With streaming
+            for token in generator.generate(messages, stream=True):
+                print(token, end="", flush=True)
         """
+        # Format messages theo Phi-3 chat template
+        prompt = self._format_prompt(messages)
+        
         if self.verbose:
-            logger.info(f"\n🎯 Generating with parameters:")
-            logger.info(f"   - Prompt length: {len(prompt)} chars")
+            logger.info(f"\n🎯 Generating with Phi-3 format")
+            logger.info(f"   - Messages: {len(messages)}")
             logger.info(f"   - Max tokens: {max_tokens}")
             logger.info(f"   - Temperature: {temperature}")
+            logger.info(f"   - Stream: {stream}")
         
         try:
             if stream:
-                return self._generate_stream(
+                # Return generator for streaming
+                return self._stream_generate(
                     prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
@@ -206,43 +254,23 @@ class Generator:
                     stop_sequences=stop_sequences,
                 )
             else:
-                return self._generate_complete(
+                # Return complete string
+                output = self.llm(
                     prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repeat_penalty,
-                    stop_sequences=stop_sequences,
+                    stop=stop_sequences or ["<|end|>", "<|user|>"],
+                    echo=False,
                 )
+                return output["choices"][0]["text"].strip()
         except Exception as e:
             logger.error(f"❌ Generation failed: {e}")
             raise
     
-    def _generate_complete(
-        self,
-        prompt: str,
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        top_k: int,
-        repeat_penalty: float,
-        stop_sequences: Optional[List[str]] = None,
-    ) -> str:
-        """Generate text hoàn chỉnh (không stream)"""
-        output = self.llm(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            repeat_penalty=repeat_penalty,
-            stop=stop_sequences or [],
-            echo=False,
-        )
-        return output["choices"][0]["text"].strip()
-    
-    def _generate_stream(
+    def _stream_generate(
         self,
         prompt: str,
         max_tokens: int,
@@ -252,7 +280,7 @@ class Generator:
         repeat_penalty: float,
         stop_sequences: Optional[List[str]] = None,
     ):
-        """Generate text với streaming"""
+        """Generator để stream tokens one-by-one"""
         output = self.llm(
             prompt,
             max_tokens=max_tokens,
@@ -260,7 +288,7 @@ class Generator:
             top_p=top_p,
             top_k=top_k,
             repeat_penalty=repeat_penalty,
-            stop=stop_sequences or [],
+            stop=stop_sequences or ["<|end|>", "<|user|>"],
             echo=False,
             stream=True,
         )
@@ -271,82 +299,33 @@ class Generator:
                 if delta:
                     yield delta
     
-    def chat_completion(
-        self,
-        messages: List[Dict[str, str]],
-        max_tokens: int = 512,
-        temperature: float = 0.7,
-        **kwargs
-    ) -> str:
+    def _format_prompt(self, messages: List[Dict[str, str]]) -> str:
         """
-        Chat completion interface (OpenAI-compatible)
+        Format messages theo Phi-3 chat template
         
         Args:
             messages: List of message dicts with "role" and "content"
-            max_tokens: Maximum tokens để generate
-            temperature: Sampling temperature
-            **kwargs: Additional parameters
         
         Returns:
-            str: Generated response
+            str: Formatted prompt theo Phi-3 format
         """
-        response = self.llm.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            **kwargs
-        )
-        return response["choices"][0]["message"]["content"].strip()
-    
-    def rag_response(
-        self,
-        query: str,
-        context: List[str],
-        system_prompt: Optional[str] = None,
-        max_tokens: int = 512,
-        temperature: float = 0.7,
-    ) -> str:
-        """
-        Generate response cho RAG pipeline
+        prompt = ""
         
-        Args:
-            query: User query
-            context: List of retrieved context chunks
-            system_prompt: Custom system prompt (optional)
-            max_tokens: Maximum tokens
-            temperature: Sampling temperature
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            
+            if role == "system":
+                prompt += f"<|system|>\n{content}\n<|end|>\n"
+            elif role == "user":
+                prompt += f"<|user|>\n{content}\n<|end|>\n"
+            elif role == "assistant":
+                prompt += f"<|assistant|>\n{content}\n<|end|>\n"
         
-        Returns:
-            str: Generated response
-        """
-        if system_prompt is None:
-            system_prompt = """You are a helpful AI assistant. 
-Based on the provided context, answer the user's question accurately and in detail.
-If the information is not in the context, clearly state that you don't have enough information."""
+        # Thêm <|assistant|> tag để bắt đầu sinh response
+        prompt += "<|assistant|>\n"
         
-        # Combine context
-        context_text = "\n\n".join([f"[Passage {i+1}]:\n{chunk}" for i, chunk in enumerate(context)])
-        
-        # Build prompt
-        prompt = f"""<|system|>
-{system_prompt}
-<|end|>
-
-<|user|>
-Context:
-{context_text}
-
-Question: {query}
-<|end|>
-
-<|assistant|>
-"""
-        
-        return self.generate(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+        return prompt
 
 
 def test_generator():
@@ -363,14 +342,17 @@ def test_generator():
         print("\n" + "=" * 80)
         print("TEST 1: Simple text generation")
         print("=" * 80)
-        prompt = "Explain what is artificial intelligence: "
-        print(f"\nPrompt: {prompt}")
-        response = generator.generate(prompt, max_tokens=200, temperature=0.7)
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Explain what is artificial intelligence in 3 sentences."}
+        ]
+        print(f"\nMessages: {messages}")
+        response = generator.generate(messages, max_tokens=200, temperature=0.7)
         print(f"\nResponse:\n{response}")
         
-        # Test 2: RAG response
+        # Test 2: RAG response with streaming
         print("\n" + "=" * 80)
-        print("TEST 2: RAG response generation")
+        print("TEST 2: RAG response generation (with streaming)")
         print("=" * 80)
         query = "What is a Transformer architecture?"
         context = [
@@ -378,9 +360,27 @@ def test_generator():
             "Transformers use the attention mechanism to learn relationships between words in a sentence.",
             "The Transformer architecture consists of an encoder and decoder stack.",
         ]
+        
+        messages = [
+            {"role": "system", "content": "You are a helpful AI assistant. Based on the provided context, answer the user's question accurately and in detail. If the information is not in the context, clearly state that you don't have enough information."},
+            {"role": "user", "content": f"Context:\n\n" + "\n\n".join([f"[Passage {i+1}]:\n{chunk}" for i, chunk in enumerate(context)]) + f"\n\nQuestion: {query}"}
+        ]
         print(f"\nQuery: {query}")
-        response = generator.rag_response(query, context, max_tokens=300)
-        print(f"\nResponse:\n{response}")
+        print("\nResponse (streaming):")
+        response_generator = generator.generate(messages, max_tokens=300, temperature=0.7, stream=True)
+        # Iterate through the generator and print tokens as they come
+        for token in response_generator:
+            print(token, end="", flush=True)
+        print()  # Newline after streaming completes
+        
+        # Test 3: RAG response without streaming
+        print("\n" + "=" * 80)
+        print("TEST 3: RAG response generation (without streaming)")
+        print("=" * 80)
+        print(f"\nQuery: {query}")
+        print("\nResponse (complete):")
+        response = generator.generate(messages, max_tokens=300, temperature=0.7, stream=False)
+        print(response)
         
     except Exception as e:
         logger.error(f"Test failed: {e}")

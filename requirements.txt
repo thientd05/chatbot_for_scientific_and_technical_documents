@@ -20,6 +20,9 @@ tqdm
 sentence-transformers
 pymilvus
 faiss-cpu
+# LLM inference
+llama-cpp-python>=0.2.0
+huggingface-hub>=0.19.0
 # MAX_JOBS=3 pip install flash-attn==2.7.3 --no-build-isolation (use 3 cores to avoid crashing)
 
 # if error, try:
