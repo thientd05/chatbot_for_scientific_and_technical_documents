@@ -104,19 +104,15 @@ class MarkdownChunker:
                 f.write(line + '\n')
 
 
-def chunk_markdown_file(file_path: str, min_chunk_length: int = 1) -> List[Chunk]:
-    """
-    Đọc file markdown và chunking
-    
-    Args:
-        file_path: Đường dẫn đến file markdown
-        min_chunk_length: Độ dài tối thiểu của một chunk
-    
-    Returns:
-        List[Chunk]: Danh sách các chunk
-    """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        text = f.read()
-    
+def main(file_path: str, output_path: str):
+    with open(file_path, "r", encoding="utf-8") as file:
+        text = file.read()
     chunker = MarkdownChunker()
-    return chunker.chunk(text, min_chunk_length) 
+    chunks = chunker.chunk(text=text, min_chunk_length=5)
+    chunker.save_to_jsonl(chunks, output_path)
+
+if __name__ == "__main__":
+    main(
+        file_path="/home/thienta/HUST_20235839/AI/rag/data/processed/final_text.txt",
+        output_path="/home/thienta/HUST_20235839/AI/rag/data/splitted/chunks.jsonl"
+    )
