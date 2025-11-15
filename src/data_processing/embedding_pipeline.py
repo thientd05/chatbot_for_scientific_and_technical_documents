@@ -1,7 +1,3 @@
-"""
-Embedding pipeline sử dụng BAAI/bge-large-en-v1.5 và FAISS
-"""
-
 import os
 import json
 import numpy as np
@@ -187,25 +183,6 @@ class EmbeddingPipeline:
             json.dump(config, f, indent=2)
         print(f"✅ Saved config to: {config_path}")
     
-    def load(self, save_dir: str) -> None:
-        """
-        Load FAISS index và metadata
-        
-        Args:
-            save_dir: Đường dẫn thư mục để load
-        """
-        # Load FAISS index
-        index_path = os.path.join(save_dir, 'faiss_index.bin')
-        self.index = faiss.read_index(index_path)
-        print(f"✅ Loaded FAISS index from: {index_path}")
-        
-        # Load metadata
-        metadata_path = os.path.join(save_dir, 'metadata.pkl')
-        with open(metadata_path, 'rb') as f:
-            self.metadata_list = pickle.load(f)
-        print(f"✅ Loaded metadata from: {metadata_path}")
-        print(f"   Total chunks: {len(self.metadata_list)}")
-    
     def get_statistics(self) -> Dict:
         """
         Lấy thống kê về index
@@ -304,3 +281,10 @@ def process_and_embed(
     pipeline.save(output_dir)
     
     return pipeline
+
+if __name__ == "__main__":
+    process_and_embed(
+        chunks_jsonl_path="../../data/splitted/chunks.jsonl",
+        output_dir="../../data/embeddings",
+        model_name="BAAI/bge-large-en-v1.5"
+    )
