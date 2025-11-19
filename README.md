@@ -23,18 +23,6 @@ A fully functional **Retrieval-Augmented Generation (RAG)** system using:
 - ✅ Streaming and non-streaming generation modes
 - ✅ Full test coverage (Test 1-3 pass)
 
-**Class Structure**:
-```python
-class DeviceManager:
-    - get_optimal_device() → (device_name, n_gpu_layers)
-
-class Generator:
-    - __init__(model_filename, n_ctx, verbose)
-    - generate(messages, stream, max_tokens, temperature, top_p, top_k) → str or Generator
-    - _format_prompt(messages) → str (Phi-3 template)
-    - _stream_generate() → yields tokens
-```
-
 **Model Details**:
 - Model Repo: `lmstudio-community/Phi-3.1-mini-4k-instruct-GGUF`
 - Quantization: `*Q4_K_M.gguf` (~2.39GB)
@@ -57,14 +45,6 @@ class Generator:
 - ✅ Top-k retrieval with configurable result count
 - ✅ Chunk metadata handling with pickle support
 
-**Class Structure**:
-```python
-class Retriever:
-    - __init__(embeddings_dir, top_k, verbose)
-    - search(query, top_k) → List[Document]
-    - _load_embeddings_from_json() → np.ndarray
-    - _compute_similarity() → float
-```
 
 ---
 
@@ -78,20 +58,6 @@ class Retriever:
 - ✅ Streaming and non-streaming generation
 - ✅ Interactive mode with REPL loop
 - ✅ Full test coverage with streaming responses
-
-**Class Structure**:
-```python
-@dataclass
-class ChunkMetadata:
-    chunk_id: int
-    content: str
-    heading: Optional[str]
-
-class RAGChain:
-    - __init__(embeddings_dir, top_k, model_filename, n_ctx, verbose)
-    - generate(query, system_prompt, max_tokens, temperature, top_p, top_k, stream) → str or Generator
-    - interactive() → REPL loop
-```
 
 **Workflow**:
 1. User query comes in
@@ -113,54 +79,6 @@ class RAGChain:
 - ✅ Real-time token streaming display
 - ✅ Session summary on exit
 - ✅ Comprehensive error handling and logging
-
-**Class Structure**:
-```python
-class ChatBot:
-    - __init__(embeddings_dir, top_k, model_filename, n_ctx, verbose)
-    - run() → main interactive loop
-    - process_query(query, stream) → str or Generator
-    - display_response(response) → None
-    - display_help() → None
-    - show_conversation_history() → None
-    - clear_history() → None
-
-def main():
-    - Parse CLI arguments
-    - Initialize ChatBot
-    - Run interactive mode
-```
-
-**CLI Arguments**:
-```bash
---embeddings-dir    # Path to embeddings (default: auto-detect)
---top-k            # Documents to retrieve (default: 3)
---model-file       # GGUF filename pattern (default: *Q4_K_M.gguf)
---context-size     # Context window (default: 2048)
---verbose          # Enable debug logging
-```
-
----
-
-## 📦 Dependencies
-
-### Core Packages
-```
-torch>=2.0.0              # PyTorch for computation
-transformers>=4.30.0      # Hugging Face transformers
-sentence-transformers     # Embeddings model
-llama-cpp-python>=0.2.0   # Llama.cpp Python bindings
-huggingface-hub>=0.19.0   # HF Hub model management
-faiss-cpu                 # Vector similarity search
-```
-
-### Supporting Packages
-```
-numpy                     # Numerical computations
-scikit-learn             # Utilities
-pymilvus                 # Vector database (optional)
-langchain                # RAG utilities
-```
 
 ---
 
@@ -266,36 +184,6 @@ langchain                # RAG utilities
 
 ---
 
-## 🎯 Usage Examples
-
-### Basic Interactive Mode
-```bash
-cd /home/thienta/HUST_20235839/AI/rag
-env/bin/python src/app/main.py
-```
-
-### With More Retrieved Documents
-```bash
-env/bin/python src/app/main.py --top-k 5
-```
-
-### With Larger Context Window
-```bash
-env/bin/python src/app/main.py --context-size 4096
-```
-
-### Debug Mode
-```bash
-env/bin/python src/app/main.py --verbose --top-k 3
-```
-
-### Combined Options
-```bash
-env/bin/python src/app/main.py --top-k 5 --context-size 4096 --verbose
-```
-
----
-
 ## 📋 File Structure
 
 ```
@@ -317,68 +205,9 @@ env/bin/python src/app/main.py --top-k 5 --context-size 4096 --verbose
 │   ├── raw/ .......................... Raw documents
 │   └── splitted/
 │       └── chunks.jsonl .............. Document chunks
-├── env/ ............................. Virtual environment
 ├── requirements.txt .................. Python dependencies
-├── MAIN_PY_REFACTORING.md ............ Implementation details
-├── CHATBOT_USER_GUIDE.md ............ User documentation
-├── health_check.sh ................... System verification
 └── README.md (this file)
 
-```
-
----
-
-## 🧪 Testing
-
-### System Health Check
-```bash
-cd /home/thienta/HUST_20235839/AI/rag
-bash health_check.sh
-```
-
-Expected output:
-```
-✓ All checks passed! System is ready.
-```
-
-### Verify Help Command
-```bash
-env/bin/python src/app/main.py --help
-```
-
-### Run Interactive Mode (Manual Test)
-```bash
-env/bin/python src/app/main.py --top-k 3 --verbose
-```
-
-Type a question, wait for streaming response, try `help`, `history`, etc.
-
----
-
-## 🔧 Troubleshooting
-
-### Import Errors
-**Solution**: Use absolute paths from project root
-```bash
-cd /home/thienta/HUST_20235839/AI/rag
-env/bin/python src/app/main.py
-```
-
-### CUDA Out of Memory
-**Solution**: Reduce context size
-```bash
-env/bin/python src/app/main.py --context-size 1024
-```
-
-### Slow First Run
-**Expected**: Model downloads (~2.39GB) and optimizes on first run
-**Normal**: Caches after first successful run
-
-### Model Not Found
-**Solution**: Check internet connection, disk space, HF_HOME variable
-```bash
-# Check cached models
-ls -la ~/.cache/huggingface/hub/ | grep -i phi
 ```
 
 ---
@@ -432,28 +261,6 @@ ls -la ~/.cache/huggingface/hub/ | grep -i phi
 - CPU optimized inference
 - GPU support (CUDA, Metal)
 - Streaming token generation
-
----
-
-## 🚀 Future Enhancements
-
-### Potential Improvements
-- [ ] Add chat history persistence (SQLite/JSON)
-- [ ] Multi-language support (Hindi, French, etc.)
-- [ ] Fine-tuning on domain-specific data
-- [ ] Caching of retrieved contexts
-- [ ] Web UI (Gradio/Streamlit)
-- [ ] API endpoint (FastAPI)
-- [ ] Multi-GPU support
-- [ ] Prompt engineering templates
-- [ ] Response evaluation metrics
-
-### Scalability
-- [ ] Milvus vector database for millions of embeddings
-- [ ] Distributed retrieval
-- [ ] Model quantization improvements
-- [ ] Batch inference
-
 ---
 
 ## 📝 Summary
@@ -467,17 +274,3 @@ This RAG system provides:
 ✅ **User-Friendly**: CLI with help and history  
 ✅ **Well-Documented**: Code and usage guides  
 ✅ **Production-Ready**: Error handling and logging  
-
----
-
-## 📞 Support
-
-For issues or questions:
-1. Check `health_check.sh` for system validation
-2. Review `CHATBOT_USER_GUIDE.md` for usage examples
-3. Check `MAIN_PY_REFACTORING.md` for implementation details
-4. Examine log output with `--verbose` flag
-
----
-
-**Ready to use! Start chatting with: `env/bin/python src/app/main.py` 🚀**

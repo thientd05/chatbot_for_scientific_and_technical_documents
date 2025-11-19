@@ -11,10 +11,9 @@ import faiss
 
 @dataclass
 class ChunkMetadata:
-    """Lưu trữ metadata cho mỗi chunk"""
-    chunk_id: int  # ID của chunk
-    content: str  # Nội dung chunk
-    heading: Optional[str]  # Tiêu đề cha
+    chunk_id: int 
+    content: str 
+    heading: Optional[str]
 
 
 class EmbeddingPipeline:

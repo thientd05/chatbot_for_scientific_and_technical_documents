@@ -11,9 +11,9 @@ import faiss
 
 @dataclass
 class ChunkMetadata:
-    chunk_id: int  # ID của chunk
-    content: str  # Nội dung chunk
-    heading: Optional[str]  # Tiêu đề cha
+    chunk_id: int 
+    content: str 
+    heading: Optional[str]
 
 
 class Retriever:
@@ -28,7 +28,6 @@ class Retriever:
         if not os.path.exists(embeddings_dir):
             raise FileNotFoundError(f"Embeddings directory not found: {embeddings_dir}")
         
-        print(f"📂 Loading embeddings from: {embeddings_dir}")
         
         config_path = os.path.join(embeddings_dir, 'config.json')
         with open(config_path, 'r') as f:

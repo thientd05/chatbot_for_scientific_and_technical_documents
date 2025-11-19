@@ -5,14 +5,13 @@ from dataclasses import dataclass
 
 @dataclass
 class Chunk:
-    """Đại diện cho một chunk text với metadata"""
-    content: str  # Nội dung của đoạn văn
-    metadata: Dict[str, Optional[str]]  # Metadata: tiêu đề cha gần nhất
+    content: str 
+    metadata: Dict[str, Optional[str]]
 
 
 class MarkdownChunker:
     def __init__(self):
-        # Pattern để match các mức heading: ##, ###, ####
+        # Pattern to match heading levels: ##, ###, ####
         self.heading_pattern = re.compile(r'^(#{2,4}) +(.+)$', re.MULTILINE)
     
     def chunk(self, text: str, min_chunk_length: int = 1) -> List[Chunk]:
@@ -24,7 +23,7 @@ class MarkdownChunker:
             heading_match = self.heading_pattern.match(line)
             
             if heading_match:
-                # Cập nhật tiêu đề cận trên
+                # Update the current heading
                 heading_text = heading_match.group(2)
                 current_heading = heading_text
             
