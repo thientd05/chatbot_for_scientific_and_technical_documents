@@ -65,13 +65,10 @@ class Retriever:
 
     
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
-        print(f"\n🔍 Query: '{query}'")
-        
         query_embedding = self.model.encode([query], show_progress_bar=False)
         query_embedding = np.array(query_embedding, dtype=np.float32)
         
-        distances, indices = self.index.search(query_embedding, top_k)
-        
+        distances, indices = self.index.search(query_embedding, top_k)  
         results = []
         for idx, distance in zip(indices[0], distances[0]):
             if idx < len(self.metadata_list):
@@ -86,7 +83,7 @@ class Retriever:
                         self.heading_embeddings_cache[metadata.heading] = np.array(heading_vec[0], dtype=np.float32)
                     
                     heading_embedding = self.heading_embeddings_cache[metadata.heading]
-                    
+
                     norm_query = np.linalg.norm(query_embedding[0])
                     norm_heading = np.linalg.norm(heading_embedding)
                     
@@ -108,40 +105,3 @@ class Retriever:
         results.sort(key=lambda x: x['hybrid_score'], reverse=True)
         
         return results
-
-
-def test_retriever():
-    """Test Retriever class"""
-    print("=" * 80)
-    print("TEST: Retriever")
-    print("=" * 80)
-    
-    retriever = Retriever()
-    
-    test_queries = [
-        "explain positional encoding",
-    ]
-    
-    print("\n" + "=" * 80)
-    print("TEST: Search Queries")
-    print("=" * 80)
-    
-    for query in test_queries:
-        results = retriever.search(query, top_k=3)
-        
-        print("-" * 80)
-        for i, result in enumerate(results, 1):
-            print(f"\n  [{i}] Chunk ID {result['chunk_id']}")
-            print(f"      Heading: {result['heading'] or 'N/A'}")
-            print(f"      Vector Similarity: {result['vector_similarity']:.4f}")
-            print(f"      Heading Similarity: {result['heading_similarity']:.4f}")
-            print(f"      Hybrid Score: {result['hybrid_score']:.4f}")
-            content_display = result['content'][:100]
-            if len(result['content']) > 100:
-                content_display += "..."
-            print(f"      Content: {content_display}")
-        print()
-
-
-if __name__ == "__main__":
-    test_retriever()

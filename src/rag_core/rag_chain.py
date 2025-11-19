@@ -99,13 +99,10 @@ Always cite the specific parts of the context that support your answer when poss
             try:
                 query = input("\n🔍 Query: ").strip()
                 if query.lower() in ["exit", "quit"]:
-                    print("\n👋 Goodbye!")
                     break
                 if not query:
-                    print("⚠️  Please enter a query")
                     continue
-                
-                print("\n📝 Response (streaming):")
+
                 print("-" * 80)
                 for token in self.generate(query, stream=True):
                     print(token, end="", flush=True)
@@ -113,53 +110,6 @@ Always cite the specific parts of the context that support your answer when poss
                 print("\n" + "-" * 80)
                 
             except KeyboardInterrupt:
-                print("\n\n👋 Goodbye!")
                 break
             except Exception as e:
-                print(f"⚠️  Error: {e}")
                 continue
-
-
-def test_rag_chain():
-    """Test RAG Chain"""
-    print("=" * 80)
-    print("TEST: RAG Chain")
-    print("=" * 80)
-    
-    try:
-        rag_chain = RAGChain(top_k=3, verbose=True)
-        
-        test_queries = [
-            "What is positional encoding?",
-            "Explain the attention mechanism",
-        ]
-        
-        for query in test_queries:
-            print("\n" + "=" * 80)
-            print(f"QUERY: {query}")
-            print("=" * 80)
-            
-            print("\n📝 Response (streaming):")
-            print("-" * 80)
-            
-            response_stream = rag_chain.generate(query, stream=True, max_tokens=300)
-            
-            for token in response_stream:
-                print(token, end="", flush=True)
-            
-            print("\n" + "-" * 80)
-        
-        print("\n✅ All tests completed!")
-        
-    except Exception as e:
-        raise
-
-
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "interactive":
-        rag_chain = RAGChain(verbose=True)
-        rag_chain.interactive()
-    else:
-        test_rag_chain()
