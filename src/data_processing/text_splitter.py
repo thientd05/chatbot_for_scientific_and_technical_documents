@@ -17,15 +17,10 @@ class MarkdownChunker:
     
     def chunk(self, text: str, min_chunk_length: int = 1) -> List[Chunk]:
         chunks = []
-        
-        # Tách văn bản thành các dòng
         lines = text.split('\n')
-        
-        current_heading = None  # Tiêu đề cận trên gần nhất
-        
+        current_heading = None
         for line in lines:
             stripped_line = line.strip()
-            
             heading_match = self.heading_pattern.match(line)
             
             if heading_match:
@@ -60,7 +55,6 @@ class MarkdownChunker:
     
     def save_to_jsonl(self, chunks: List[Chunk], file_path: str) -> None:
         import json
-        
         with open(file_path, 'w', encoding='utf-8') as f:
             for chunk in chunks:
                 line = json.dumps({

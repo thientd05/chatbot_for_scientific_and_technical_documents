@@ -1,13 +1,4 @@
-"""
-RAG Chain - Retrieval Augmented Generation Pipeline
-- Kết hợp Retriever và Generator
-- Tìm kiếm context liên quan
-- Sinh response dựa trên context
-- Hỗ trợ streaming generation
-"""
-
 import os
-import logging
 from typing import List, Dict, Optional, Generator as GeneratorType
 from dataclasses import dataclass
 
@@ -21,9 +12,6 @@ class ChunkMetadata:
 from .retriever import Retriever
 from .generator import Generator
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 class RAGChain:
     def __init__(
@@ -34,32 +22,22 @@ class RAGChain:
         n_ctx: int = 2048,
         verbose: bool = False,
     ):
-        logger.info("🔗 Initializing RAG Chain...")
-        
         self.top_k = top_k
         self.verbose = verbose
-        
-        logger.info("📚 Loading Retriever...")
         try:
             self.retriever = Retriever(embeddings_dir=embeddings_dir)
-            logger.info("✅ Retriever loaded successfully")
         except Exception as e:
-            logger.error(f"❌ Failed to load Retriever: {e}")
             raise
         
-        logger.info("🤖 Loading Generator...")
         try:
             self.generator = Generator(
                 model_filename=model_filename,
                 n_ctx=n_ctx,
                 verbose=verbose,
             )
-            logger.info("✅ Generator loaded successfully")
         except Exception as e:
-            logger.error(f"❌ Failed to load Generator: {e}")
             raise
         
-        logger.info("✅ RAG Chain initialized!")
     
     def generate(
         self,
@@ -72,22 +50,13 @@ class RAGChain:
         stream: bool = False,
     ):
         retrieve_top_k = top_k if top_k is not None else self.top_k
-        
-        if self.verbose:
-            logger.info(f"\n🔍 RAG Query: '{query}'")
-            logger.info(f"   - Retrieving top {retrieve_top_k} chunks")
+
         
         try:
             search_results = self.retriever.search(query, top_k=retrieve_top_k)
             context_chunks = [result["content"] for result in search_results]
             
-            if self.verbose:
-                logger.info(f"   - Retrieved {len(context_chunks)} chunks")
-                for i, result in enumerate(search_results, 1):
-                    logger.info(f"     [{i}] Score: {result['hybrid_score']:.4f}, Heading: {result['heading']}")
-            
         except Exception as e:
-            logger.error(f"❌ Retrieval failed: {e}")
             raise
         
         if system_prompt is None:
@@ -105,12 +74,6 @@ Always cite the specific parts of the context that support your answer when poss
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Document Context:\n\n{context_text}\n\nQuestion: {query}"}
         ]
-        
-        if self.verbose:
-            logger.info(f"\n🎯 Generating response...")
-            logger.info(f"   - Max tokens: {max_tokens}")
-            logger.info(f"   - Temperature: {temperature}")
-            logger.info(f"   - Stream: {stream}")
 
         try:
             response = self.generator.generate(
@@ -121,14 +84,9 @@ Always cite the specific parts of the context that support your answer when poss
                 stream=stream,
             )
             
-            if not stream:
-                if self.verbose:
-                    logger.info(f"✅ Response generated successfully")
-            
             return response
             
         except Exception as e:
-            logger.error(f"❌ Generation failed: {e}")
             raise
     
     def interactive(self):
@@ -140,19 +98,15 @@ Always cite the specific parts of the context that support your answer when poss
         while True:
             try:
                 query = input("\n🔍 Query: ").strip()
-                
                 if query.lower() in ["exit", "quit"]:
                     print("\n👋 Goodbye!")
                     break
-                
                 if not query:
                     print("⚠️  Please enter a query")
                     continue
                 
                 print("\n📝 Response (streaming):")
                 print("-" * 80)
-                
-                # Stream response
                 for token in self.generate(query, stream=True):
                     print(token, end="", flush=True)
                 
@@ -162,7 +116,6 @@ Always cite the specific parts of the context that support your answer when poss
                 print("\n\n👋 Goodbye!")
                 break
             except Exception as e:
-                logger.error(f"❌ Error: {e}")
                 print(f"⚠️  Error: {e}")
                 continue
 
@@ -199,7 +152,6 @@ def test_rag_chain():
         print("\n✅ All tests completed!")
         
     except Exception as e:
-        logger.error(f"Test failed: {e}")
         raise
 
 

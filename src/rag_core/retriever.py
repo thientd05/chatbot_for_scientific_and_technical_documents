@@ -1,10 +1,3 @@
-"""
-Retriever class cho RAG pipeline
-- Load FAISS index và metadata
-- Phân loại query để lấy metadata phù hợp
-- Search vector trong từng category
-"""
-
 import os
 import json
 import pickle
@@ -27,7 +20,6 @@ class Retriever:
     
     def __init__(self, embeddings_dir: str = None):
         if embeddings_dir is None:
-            # Đường dẫn mặc định từ vị trí file này
             current_dir = os.path.dirname(os.path.abspath(__file__))
             embeddings_dir = os.path.join(current_dir, '../../data/embeddings')
         
@@ -45,17 +37,14 @@ class Retriever:
         self.model_name = config['model_name']
         self.embedding_dim = config['embedding_dim']
         
-        print(f"📥 Loading model: {self.model_name}")
         self.model = SentenceTransformer(self.model_name)
         
         index_path = os.path.join(embeddings_dir, 'faiss_index.bin')
         self.index = faiss.read_index(index_path)
-        print(f"✅ Loaded FAISS index (ntotal={self.index.ntotal})")
         
         metadata_path = os.path.join(embeddings_dir, 'metadata.pkl')
         with open(metadata_path, 'rb') as f:
             self.metadata_list = pickle.load(f)
-        print(f"✅ Loaded {len(self.metadata_list)} metadata entries")
         
         self.heading_embeddings_cache = {}
         
@@ -72,8 +61,6 @@ class Retriever:
             if heading not in self.heading_to_indices:
                 self.heading_to_indices[heading] = []
             self.heading_to_indices[heading].append(idx)
-        
-        print(f"✅ Built heading index with {len(self.heading_to_indices)} unique headings")
     
 
     

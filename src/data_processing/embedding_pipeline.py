@@ -21,34 +21,20 @@ class EmbeddingPipeline:
     def __init__(self, model_name: str = "BAAI/bge-large-en-v1.5"):
         self.model_name = model_name
         self.embedding_dim = 1024 
-        
-        print(f"📥 Loading model: {model_name}")
         self.model = SentenceTransformer(model_name)
-        
-        self.index = faiss.IndexFlatL2(self.embedding_dim)
-        
+        self.index = faiss.IndexFlatL2(self.embedding_dim) 
         self.metadata_list: List[ChunkMetadata] = []
-        
-        print(f"✅ Model loaded. Embedding dimension: {self.embedding_dim}")
     
     def embed_chunks(self, chunks: List[Dict]) -> np.ndarray:
-        print(f"\n📊 Embedding {len(chunks)} chunks...")
-        
         contents = [chunk['content'] for chunk in chunks]
-        
         embeddings = self.model.encode(contents, show_progress_bar=True)
-        
         embeddings = np.array(embeddings, dtype=np.float32)
-        
-        print(f"✅ Embedding completed. Shape: {embeddings.shape}")
         
         return embeddings
     
     def add_chunks(self, chunks: List[Dict]) -> None:
         embeddings = self.embed_chunks(chunks)
-        
         self.index.add(embeddings)
-        
         start_chunk_id = len(self.metadata_list)
         for i, chunk in enumerate(chunks):
             metadata = ChunkMetadata(
@@ -57,27 +43,20 @@ class EmbeddingPipeline:
                 heading=chunk['metadata'].get('heading')
             )
             self.metadata_list.append(metadata)
-        
-        print(f"✅ Added {len(chunks)} chunks to index")
-        print(f"   Total chunks in index: {len(self.metadata_list)}")
     
     def save(self, save_dir: str) -> None:
         os.makedirs(save_dir, exist_ok=True)
-        
         index_path = os.path.join(save_dir, 'faiss_index.bin')
         faiss.write_index(self.index, index_path)
-        print(f"✅ Saved FAISS index to: {index_path}")
         
         metadata_path = os.path.join(save_dir, 'metadata.pkl')
         with open(metadata_path, 'wb') as f:
             pickle.dump(self.metadata_list, f)
-        print(f"✅ Saved metadata to: {metadata_path}")
         
         metadata_json_path = os.path.join(save_dir, 'metadata.json')
         metadata_json = [asdict(m) for m in self.metadata_list]
         with open(metadata_json_path, 'w', encoding='utf-8') as f:
             json.dump(metadata_json, f, ensure_ascii=False, indent=2)
-        print(f"✅ Saved metadata (JSON) to: {metadata_json_path}")
         
         config = {
             'model_name': self.model_name,
@@ -87,7 +66,6 @@ class EmbeddingPipeline:
         config_path = os.path.join(save_dir, 'config.json')
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
-        print(f"✅ Saved config to: {config_path}")
     
     def get_statistics(self) -> Dict:
         heading_counts = {}
@@ -103,9 +81,7 @@ class EmbeddingPipeline:
         }
     
     def print_statistics(self) -> None:
-        """In thống kê index"""
         stats = self.get_statistics()
-        
         print("\n" + "=" * 80)
         print("📊 EMBEDDING INDEX STATISTICS")
         print("=" * 80)
@@ -130,8 +106,7 @@ def load_chunks_from_jsonl(jsonl_path: str) -> List[Dict]:
             if line.strip():
                 chunk = json.loads(line)
                 chunks.append(chunk)
-    
-    print(f"✅ Loaded {len(chunks)} chunks from {jsonl_path}")
+
     return chunks
 
 
