@@ -99,10 +99,10 @@ Commands:
   exit    - Exit the chatbot
 
 Examples of queries:
-  • "What is attention mechanism?"
-  • "Explain transformer architecture"
-  • "How does self-attention work?"
-  • "Tell me about positional encoding"
+  - "What is attention mechanism?"
+  - "Explain transformer architecture"
+  - "How does self-attention work?"
+  - "Tell me about positional encoding"
 
 Tips:
   - Ask specific questions for better results
@@ -116,7 +116,7 @@ Tips:
 
     def show_conversation_history(self):
         if not self.conversation_history:
-            print("\n📭 No conversation history yet.")
+            print("\n No conversation history yet.")
             return
         
         print("\n" + "=" * 60)
@@ -124,7 +124,7 @@ Tips:
         print("=" * 60)
         
         for i, msg in enumerate(self.conversation_history, 1):
-            msg_type = "👤 USER" if msg["type"] == "user" else "🤖 ASSISTANT"
+            msg_type = "USER" if msg["type"] == "user" else "ASSISTANT"
             timestamp = msg["timestamp"].strftime("%H:%M:%S")
             
             print(f"\n[{i}] {msg_type} ({timestamp})")
@@ -138,11 +138,11 @@ Tips:
 
     def clear_history(self):
         self.conversation_history = []
-        print("\n🗑️  Conversation history cleared.")
+        print("\n Conversation history cleared.")
 
     def run(self):
         print("\n" + "╔" + "=" * 58 + "╗")
-        print("║" + " " * 15 + "🤖 RAG CHATBOT - Interactive Mode" + " " * 10 + "║")
+        print("║" + " " * 15 + "RAG CHATBOT - Interactive Mode" + " " * 10 + "║")
         print("╚" + "=" * 58 + "╝")
         print("\nWelcome to the RAG-based document Q&A chatbot!")
         print("Type 'help' for commands or just ask a question.")
@@ -152,7 +152,7 @@ Tips:
             while True:
                 print("-" * 60)
                 try:
-                    user_input = input("\n📝 You: ").strip()
+                    user_input = input("\n You: ").strip()
                 except KeyboardInterrupt:
                     print("\n\nChatbot interrupted by user.")
                     break
@@ -162,7 +162,7 @@ Tips:
                     continue
                 
                 if user_input.lower() in ["quit", "exit"]:
-                    print("\n👋 Thank you for using the RAG Chatbot. Goodbye!")
+                    print("\n Thank you for using the RAG Chatbot. Goodbye!")
                     break
                 
                 elif user_input.lower() == "help":
@@ -177,9 +177,9 @@ Tips:
                     self.clear_history()
                     continue
                 
-                print("\n⏳ Processing your question...")
+                print("\n Processing your question...")
                 print("-" * 60)
-                print("📝 Response (streaming):")
+                print(" Response (streaming):")
                 print("-" * 60)
                 
                 response_stream = self.rag_chain.generate(user_input, stream=True, max_tokens=512)
@@ -199,7 +199,7 @@ Tips:
         
         except Exception as e:
             logger.error(f"Error in chat loop: {str(e)}")
-            print(f"\n❌ An error occurred: {str(e)}")
+            print(f"\n An error occurred: {str(e)}")
         
         finally:
             elapsed_time = datetime.now() - self.start_time
