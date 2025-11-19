@@ -15,9 +15,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ScientificPaperOCR:
-    """A class to handle OCR processing of scientific papers using DeepSeek OCR."""
-    
+class ScientificPaperOCR: 
     MODEL_NAME = "deepseek-ai/DeepSeek-OCR"
     PROMPT = "<image>\n<|grounding|>Convert the document to markdown."
     
@@ -29,16 +27,6 @@ class ScientificPaperOCR:
         image_size: int = 640,
         crop_mode: bool = False
     ):
-        """
-        Initialize the OCR processor.
-        
-        Args:
-            gpu_device: GPU device to use (default: '0')
-            model_name: Name of the DeepSeek OCR model to use
-            base_size: Base size for OCR processing
-            image_size: Target image size for OCR
-            crop_mode: Whether to use crop mode
-        """
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_device
         self.model_name = model_name
         self.base_size = base_size
@@ -48,7 +36,6 @@ class ScientificPaperOCR:
         
         logger.info(f"Initializing ScientificPaperOCR with model: {model_name}")
         
-        # Initialize model and tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModel.from_pretrained(
             model_name,
@@ -60,19 +47,8 @@ class ScientificPaperOCR:
         logger.info("Model and tokenizer initialized successfully")
 
     def pdf_to_images(self, pdf_path: str, dpi: int = 300, output_dir: str = "") -> List[str]:
-        """
-        Convert PDF pages to images.
-        
-        Args:
-            pdf_path: Path to the PDF file
-            dpi: DPI for image conversion
-            output_dir: Directory to save the images
-            
-        Returns:
-            List of paths to the generated images
-        """
         logger.info(f"Converting PDF to images: {pdf_path}")
-        self.img_paths = []  # Reset image paths
+        self.img_paths = []
         
         pages = pdf2image.convert_from_path(pdf_path, dpi=dpi)
         for i, page in enumerate(pages, 1):
@@ -85,13 +61,6 @@ class ScientificPaperOCR:
         return self.img_paths
 
     def process_image(self, image_file: str, output_dir: str) -> None:
-        """
-        Process a single image with DeepSeek OCR.
-        
-        Args:
-            image_file: Path to the image file
-            output_dir: Directory to save the OCR results
-        """
         logger.info(f"Processing image: {image_file}")
         
         self.model.infer(
@@ -113,33 +82,17 @@ class ScientificPaperOCR:
         text_output_path: Optional[str] = None,
         dpi: int = 300
     ) -> str:
-        """
-        Process a PDF file through the complete OCR pipeline.
-        
-        Args:
-            pdf_path: Path to the PDF file
-            output_dir: Directory to save intermediate and final results
-            text_output_path: Path for the final text output (optional)
-            dpi: DPI for PDF to image conversion
-            
-        Returns:
-            Path to the generated text file
-        """
         logger.info(f"Starting OCR pipeline for: {pdf_path}")
         
-        # Create output directory
         os.makedirs(output_dir, exist_ok=True)
         
-        # Convert PDF to images
         self.pdf_to_images(pdf_path=pdf_path, dpi=dpi, output_dir=output_dir)
         
-        # Process each image
         for i, img_file in enumerate(self.img_paths, 1):
             output_ocr = os.path.join(output_dir, f"page_{i}")
             os.makedirs(output_ocr, exist_ok=True)
             self.process_image(image_file=img_file, output_dir=output_ocr)
             
-        # Combine results into final text file
         if text_output_path is None:
             text_output_path = os.path.join(output_dir, "final_text.txt")
         
@@ -147,13 +100,6 @@ class ScientificPaperOCR:
         return text_output_path
 
     def combine_results(self, ocr_dir: str, text_path: str) -> None:
-        """
-        Combine individual page results into a single text file.
-        
-        Args:
-            ocr_dir: Directory containing the OCR results
-            text_path: Path for the output text file
-        """
         logger.info(f"Combining results into: {text_path}")
         
         os.makedirs(os.path.dirname(text_path), exist_ok=True)
@@ -168,11 +114,8 @@ class ScientificPaperOCR:
         logger.info("Results combined successfully")
 
 def main():
-    """Example usage of the ScientificPaperOCR class."""
-    # Initialize the OCR processor
     ocr_processor = ScientificPaperOCR()
     
-    # Process a PDF file
     pdf_path = "../../data/raw/NIPS-2017-attention-is-all-you-need-Paper.pdf"
     output_dir = "../../data/ocr"
     text_output = "../../data/processed/final_text.txt"

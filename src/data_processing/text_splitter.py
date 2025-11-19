@@ -11,27 +11,11 @@ class Chunk:
 
 
 class MarkdownChunker:
-    """
-    Class để chunking văn bản markdown thành các đoạn văn (paragraphs)
-    với metadata là tiêu đề cận trên gần nhất (##, ###, hoặc ####)
-    """
-    
     def __init__(self):
         # Pattern để match các mức heading: ##, ###, ####
         self.heading_pattern = re.compile(r'^(#{2,4}) +(.+)$', re.MULTILINE)
     
     def chunk(self, text: str, min_chunk_length: int = 1) -> List[Chunk]:
-        """
-        Chia nhỏ văn bản thành các chunk (mỗi dòng là một chunk)
-        Metadata là tiêu đề cận trên gần nhất (##, ###, hoặc ####)
-        
-        Args:
-            text: Văn bản markdown cần chunking
-            min_chunk_length: Độ dài tối thiểu của một chunk (mặc định 1 ký tự)
-        
-        Returns:
-            List[Chunk]: Danh sách các chunk với metadata
-        """
         chunks = []
         
         # Tách văn bản thành các dòng
@@ -42,7 +26,6 @@ class MarkdownChunker:
         for line in lines:
             stripped_line = line.strip()
             
-            # Kiểm tra nếu là heading (##, ###, hoặc ####)
             heading_match = self.heading_pattern.match(line)
             
             if heading_match:
@@ -50,8 +33,7 @@ class MarkdownChunker:
                 heading_text = heading_match.group(2)
                 current_heading = heading_text
             
-            elif stripped_line:  # Nếu là dòng text không trống
-                # Bỏ qua hình ảnh, HTML tags, và các ký tự đặc biệt
+            elif stripped_line:
                 if (not stripped_line.startswith('!') and 
                     not stripped_line.startswith('<') and
                     not stripped_line.startswith('|') and
@@ -68,15 +50,6 @@ class MarkdownChunker:
         return chunks
     
     def to_dict_list(self, chunks: List[Chunk]) -> List[Dict]:
-        """
-        Chuyển đổi danh sách Chunk thành danh sách dictionary
-        
-        Args:
-            chunks: Danh sách Chunk
-        
-        Returns:
-            List[Dict]: Danh sách dictionary với keys 'content' và 'metadata'
-        """
         return [
             {
                 'content': chunk.content,
@@ -86,13 +59,6 @@ class MarkdownChunker:
         ]
     
     def save_to_jsonl(self, chunks: List[Chunk], file_path: str) -> None:
-        """
-        Lưu chunks thành file JSONL (JSON Lines)
-        
-        Args:
-            chunks: Danh sách Chunk
-            file_path: Đường dẫn file JSONL cần lưu
-        """
         import json
         
         with open(file_path, 'w', encoding='utf-8') as f:

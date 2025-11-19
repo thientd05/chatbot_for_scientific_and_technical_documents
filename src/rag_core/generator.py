@@ -1,11 +1,3 @@
-"""
-Generator class cho RAG pipeline
-- Sử dụng mô hình Phi-3.1-mini-4k-instruct-GGUF (3.8B parameters)
-- Tối ưu hóa cho GPU 4GB VRAM
-- Tự động lựa chọn thiết bị (GPU/CPU)
-- Hỗ trợ streaming generation
-"""
-
 import os
 import logging
 from typing import List, Dict, Optional, Generator
@@ -25,36 +17,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class DeviceManager:
-    """Quản lý thiết bị cho inference tối ưu với GPU hạn chế"""
-    
+class DeviceManager: 
     @staticmethod
     def get_optimal_device() -> tuple[str, int]:
-        """
-        Xác định thiết bị tối ưu dựa trên GPU VRAM có sẵn
-        Cố gắng khai thác tối đa GPU, chỉ sử dụng CPU cho phần còn lại
-        
-        Returns:
-            tuple: (device_name, n_gpu_layers)
-            - device_name: "cuda", "mps" hoặc "cpu"
-            - n_gpu_layers: số layers để đẩy lên GPU (-1 = all, 0 = cpu-only)
-        """
         device = "cpu"
         n_gpu_layers = 0
         
-        # Kiểm tra CUDA
         if torch.cuda.is_available():
             try:
                 total_memory = torch.cuda.get_device_properties(0).total_memory
                 total_memory_gb = total_memory / (1024**3)
                 
                 logger.info(f"✅ CUDA available - GPU VRAM: {total_memory_gb:.2f}GB")
-                
-                # Phi-3.1-mini-4k-instruct-GGUF kích thước:
-                # - Model base: ~2.39GB (Q4_K_M quant)
-                # - KV cache: ~0.5-1.0GB (tùy context length và batch size)
-                # - Overhead: ~0.2GB
-                # - Tổng: ~3.0-3.6GB
                 
                 device = "cuda"
                 
@@ -98,28 +72,8 @@ class DeviceManager:
 
 
 class Generator:
-    """
-    Generator class sử dụng mô hình Phi-3.1-mini-4k-instruct-GGUF
-    cho RAG pipeline
-    
-    Attributes:
-        model_repo_id: Hugging Face repo ID của mô hình GGUF
-        model_filename: Tên file GGUF (pattern)
-        llm: Llama model instance
-        device: Device đang sử dụng (cuda/mps/cpu)
-        n_gpu_layers: Số layers đẩy lên GPU
-    """
-    
-    # Model configuration
     MODEL_REPO_ID = "lmstudio-community/Phi-3.1-mini-4k-instruct-GGUF"
-    MODEL_FILENAME = "*Q4_K_M.gguf"  # Quantized 4-bit (Q4_K_M) - ~2.39GB, tối ưu cho 4GB GPU
-    
-    # Alternative quantizations cho GPU với VRAM khác nhau:
-    # IQ3_M: ~1.86GB (3-bit, rất nhỏ, chất lượng kém)
-    # IQ4_XS: ~2.06GB (4-bit, rất tốt, nhỏ)
-    # Q4_K_M: ~2.39GB (4-bit, tốt nhất, cân bằng)
-    # Q5_K_M: ~2.82GB (5-bit, chất lượng cao)
-    # Q8_0: ~4.06GB (8-bit, chất lượng cao nhất)
+    MODEL_FILENAME = "*Q4_K_M.gguf"
     
     def __init__(
         self,
@@ -128,21 +82,11 @@ class Generator:
         n_threads: int = -1,  # -1 = use all available
         verbose: bool = False,
     ):
-        """
-        Khởi tạo Generator
-        
-        Args:
-            model_filename: Tên file GGUF (default: Q4_K_M)
-            n_ctx: Context window size (default: 2048)
-            n_threads: Số threads CPU (default: -1 = tất cả)
-            verbose: Log chi tiết (default: False)
-        """
         self.model_filename = model_filename or self.MODEL_FILENAME
         self.n_ctx = n_ctx
         self.n_threads = n_threads if n_threads > 0 else os.cpu_count() or 8
         self.verbose = verbose
         
-        # Xác định thiết bị tối ưu
         self.device, self.n_gpu_layers = DeviceManager.get_optimal_device()
         
         logger.info(f"🔧 Loading model: {self.MODEL_REPO_ID}")
@@ -152,7 +96,6 @@ class Generator:
         logger.info(f"   - GPU layers: {self.n_gpu_layers}")
         logger.info(f"   - CPU threads: {self.n_threads}")
         
-        # Load model từ Hugging Face Hub
         try:
             self.llm = Llama.from_pretrained(
                 repo_id=self.MODEL_REPO_ID,
@@ -161,7 +104,6 @@ class Generator:
                 n_threads=self.n_threads,
                 n_gpu_layers=self.n_gpu_layers,
                 verbose=verbose,
-                # Phi-3.1 sử dụng chat format khác
                 chat_format="phi3"
             )
             logger.info("✅ Model loaded successfully!")
@@ -185,52 +127,6 @@ class Generator:
         stop_sequences: Optional[List[str]] = None,
         stream: bool = False,
     ):
-        """
-        Generate text từ messages (Phi-3 chat format)
-        
-        Format messages theo Phi-3 chat template:
-        <|system|>
-        {system_message}
-        <|end|>
-        <|user|>
-        {user_message}
-        <|end|>
-        <|assistant|>
-        {assistant_response}
-        <|end|>
-        
-        Args:
-            messages: List of message dicts with "role" and "content"
-                     Roles: "system", "user", "assistant"
-            max_tokens: Maximum tokens để generate (default: 512)
-            temperature: Sampling temperature (default: 0.7)
-            top_p: Nucleus sampling parameter (default: 0.95)
-            top_k: Top-k sampling parameter (default: 40)
-            repeat_penalty: Penalize repetition (default: 1.1)
-            stop_sequences: List stop sequences (default: None)
-            stream: Stream output token-by-token (default: False)
-                   If True, returns Generator yielding tokens
-                   If False, returns str with full response
-        
-        Returns:
-            str or Generator: Generated text (assistant response)
-                - If stream=False: str
-                - If stream=True: Generator yielding str tokens
-        
-        Example:
-            messages = [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "What is AI?"}
-            ]
-            
-            # Without streaming
-            response = generator.generate(messages)
-            print(response)
-            
-            # With streaming
-            for token in generator.generate(messages, stream=True):
-                print(token, end="", flush=True)
-        """
         # Format messages theo Phi-3 chat template
         prompt = self._format_prompt(messages)
         
@@ -300,15 +196,6 @@ class Generator:
                     yield delta
     
     def _format_prompt(self, messages: List[Dict[str, str]]) -> str:
-        """
-        Format messages theo Phi-3 chat template
-        
-        Args:
-            messages: List of message dicts with "role" and "content"
-        
-        Returns:
-            str: Formatted prompt theo Phi-3 format
-        """
         prompt = ""
         
         for message in messages:
@@ -329,7 +216,6 @@ class Generator:
 
 
 def test_generator():
-    """Test Generator class"""
     print("=" * 80)
     print("TEST: Generator")
     print("=" * 80)

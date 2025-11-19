@@ -1,8 +1,3 @@
-"""
-Main chatbot application implementing an interactive chat loop
-using the RAG (Retrieval-Augmented Generation) system.
-"""
-
 import sys
 import os
 import argparse
@@ -12,14 +7,12 @@ import logging
 from datetime import datetime
 from dataclasses import dataclass
 
-# Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rag_core.rag_chain import RAGChain
 from rag_core.retriever import Retriever
 from rag_core.generator import Generator
 
-# Define ChunkMetadata for pickle deserialization
 @dataclass
 class ChunkMetadata:
     """Lưu trữ metadata cho mỗi chunk"""
@@ -36,8 +29,6 @@ logger = logging.getLogger(__name__)
 
 
 class ChatBot:
-    """Interactive chatbot with RAG capabilities"""
-    
     def __init__(
         self,
         embeddings_dir: Optional[str] = None,
@@ -46,22 +37,11 @@ class ChatBot:
         n_ctx: int = 2048,
         verbose: bool = False,
     ):
-        """
-        Initialize the chatbot with RAG chain.
-        
-        Args:
-            embeddings_dir: Path to embeddings directory (default: auto)
-            top_k: Number of context chunks to retrieve (default: 3)
-            model_filename: GGUF model filename (default: *Q4_K_M.gguf)
-            n_ctx: Context window size (default: 2048)
-            verbose: Enable verbose logging (default: False)
-        """
         logger.info("=" * 60)
         logger.info("Initializing ChatBot with RAG System")
         logger.info("=" * 60)
         
         try:
-            # Initialize RAG Chain
             logger.info("Initializing RAG Chain...")
             self.rag_chain = RAGChain(
                 embeddings_dir=embeddings_dir,
@@ -73,7 +53,6 @@ class ChatBot:
             
             logger.info("ChatBot initialized successfully!")
             
-            # Conversation history
             self.conversation_history = []
             self.start_time = datetime.now()
             
@@ -82,23 +61,11 @@ class ChatBot:
             raise
 
     def process_query(self, query: str, stream: bool = False):
-        """
-        Process a user query and return the response.
-        
-        Args:
-            query: The user's question
-            stream: Whether to stream the response (default: False)
-            
-        Returns:
-            str or Generator: Response text or token generator
-        """
         try:
             logger.info(f"\nProcessing query: {query}")
             
-            # Generate response using RAG chain
             response = self.rag_chain.generate(query, stream=stream, max_tokens=512)
             
-            # Add to conversation history
             self.conversation_history.append({
                 "type": "user",
                 "content": query,
@@ -112,7 +79,6 @@ class ChatBot:
             return f"Sorry, I encountered an error: {str(e)}"
 
     def display_response(self, response: str):
-        """Display the response with formatting"""
         print("\n" + "=" * 60)
         print("ASSISTANT:")
         print("=" * 60)
@@ -149,7 +115,6 @@ Tips:
         print(help_text)
 
     def show_conversation_history(self):
-        """Display conversation history"""
         if not self.conversation_history:
             print("\n📭 No conversation history yet.")
             return
@@ -166,19 +131,16 @@ Tips:
             print("-" * 60)
             
             content = msg["content"]
-            # Truncate long messages
             if len(content) > 300:
                 content = content[:300] + "...[truncated]"
             
             print(content)
 
     def clear_history(self):
-        """Clear conversation history"""
         self.conversation_history = []
         print("\n🗑️  Conversation history cleared.")
 
     def run(self):
-        """Main chat loop"""
         print("\n" + "╔" + "=" * 58 + "╗")
         print("║" + " " * 15 + "🤖 RAG CHATBOT - Interactive Mode" + " " * 10 + "║")
         print("╚" + "=" * 58 + "╝")
@@ -188,7 +150,6 @@ Tips:
         
         try:
             while True:
-                # Get user input
                 print("-" * 60)
                 try:
                     user_input = input("\n📝 You: ").strip()
@@ -196,12 +157,10 @@ Tips:
                     print("\n\nChatbot interrupted by user.")
                     break
                 
-                # Handle empty input
                 if not user_input:
                     print("Please enter a question or command.")
                     continue
                 
-                # Handle special commands
                 if user_input.lower() in ["quit", "exit"]:
                     print("\n👋 Thank you for using the RAG Chatbot. Goodbye!")
                     break
@@ -218,16 +177,13 @@ Tips:
                     self.clear_history()
                     continue
                 
-                # Process regular query with streaming
                 print("\n⏳ Processing your question...")
                 print("-" * 60)
                 print("📝 Response (streaming):")
                 print("-" * 60)
                 
-                # Get response generator
                 response_stream = self.rag_chain.generate(user_input, stream=True, max_tokens=512)
                 
-                # Collect full response while streaming
                 full_response = ""
                 for token in response_stream:
                     print(token, end="", flush=True)
@@ -235,7 +191,6 @@ Tips:
                 
                 print("\n")
                 
-                # Add to history
                 self.conversation_history.append({
                     "type": "assistant",
                     "content": full_response,
@@ -247,7 +202,6 @@ Tips:
             print(f"\n❌ An error occurred: {str(e)}")
         
         finally:
-            # Summary
             elapsed_time = datetime.now() - self.start_time
             print("\n" + "=" * 60)
             print("SESSION SUMMARY")
@@ -296,7 +250,7 @@ Examples:
     parser.add_argument(
         "--context-size",
         type=int,
-        default=2048,
+        default=4096,
         help="Context window size (default: 2048)"
     )
     
@@ -309,7 +263,6 @@ Examples:
     args = parser.parse_args()
     
     try:
-        # Initialize and run chatbot
         print("\n" + "═" * 60)
         print("  RAG-based Document Question Answering System")
         print("═" * 60 + "\n")
@@ -321,8 +274,6 @@ Examples:
             n_ctx=args.context_size,
             verbose=args.verbose
         )
-        
-        # Run interactive mode
         chatbot.run()
         
     except KeyboardInterrupt:

@@ -11,7 +11,6 @@ import logging
 from typing import List, Dict, Optional, Generator as GeneratorType
 from dataclasses import dataclass
 
-# Import ChunkMetadata before Retriever (needed for pickle deserialization)
 @dataclass
 class ChunkMetadata:
     """Lưu trữ metadata cho mỗi chunk"""
@@ -22,27 +21,11 @@ class ChunkMetadata:
 from .retriever import Retriever
 from .generator import Generator
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class RAGChain:
-    """
-    RAG Chain - Retrieval Augmented Generation Pipeline
-    
-    Workflow:
-    1. User submits query
-    2. Retriever searches for relevant chunks from FAISS index
-    3. Top-k context passages are combined with system prompt
-    4. Generator creates response based on context
-    
-    Attributes:
-        retriever: Retriever instance for semantic search
-        generator: Generator instance for LLM inference
-        top_k: Number of context chunks to retrieve (default: 3)
-    """
-    
     def __init__(
         self,
         embeddings_dir: Optional[str] = None,
@@ -51,22 +34,11 @@ class RAGChain:
         n_ctx: int = 2048,
         verbose: bool = False,
     ):
-        """
-        Khởi tạo RAG Chain
-        
-        Args:
-            embeddings_dir: Path to embeddings directory (default: auto)
-            top_k: Number of context chunks to retrieve (default: 3)
-            model_filename: GGUF model filename (default: *Q4_K_M.gguf)
-            n_ctx: Context window size (default: 2048)
-            verbose: Enable verbose logging (default: False)
-        """
         logger.info("🔗 Initializing RAG Chain...")
         
         self.top_k = top_k
         self.verbose = verbose
         
-        # Load Retriever
         logger.info("📚 Loading Retriever...")
         try:
             self.retriever = Retriever(embeddings_dir=embeddings_dir)
@@ -75,7 +47,6 @@ class RAGChain:
             logger.error(f"❌ Failed to load Retriever: {e}")
             raise
         
-        # Load Generator
         logger.info("🤖 Loading Generator...")
         try:
             self.generator = Generator(
@@ -100,45 +71,12 @@ class RAGChain:
         top_k: Optional[int] = None,
         stream: bool = False,
     ):
-        """
-        Generate response từ query sử dụng RAG
-        
-        Workflow:
-        1. Retrieve relevant context chunks
-        2. Format messages với system prompt + context + query
-        3. Generate response từ LLM
-        
-        Args:
-            query: User query
-            system_prompt: Custom system prompt (default: built-in)
-            max_tokens: Maximum tokens to generate (default: 512)
-            temperature: Sampling temperature (default: 0.7)
-            top_p: Nucleus sampling parameter (default: 0.95)
-            top_k: Override default top_k for this query (default: None)
-            stream: Stream output token-by-token (default: False)
-        
-        Returns:
-            str or Generator: Response text
-                - If stream=False: str with full response
-                - If stream=True: Generator yielding tokens
-        
-        Example:
-            # Without streaming
-            response = rag_chain.generate("What is a Transformer?")
-            print(response)
-            
-            # With streaming
-            for token in rag_chain.generate("What is a Transformer?", stream=True):
-                print(token, end="", flush=True)
-        """
-        # Use custom top_k or default
         retrieve_top_k = top_k if top_k is not None else self.top_k
         
         if self.verbose:
             logger.info(f"\n🔍 RAG Query: '{query}'")
             logger.info(f"   - Retrieving top {retrieve_top_k} chunks")
         
-        # Step 1: Retrieve context
         try:
             search_results = self.retriever.search(query, top_k=retrieve_top_k)
             context_chunks = [result["content"] for result in search_results]
@@ -152,20 +90,17 @@ class RAGChain:
             logger.error(f"❌ Retrieval failed: {e}")
             raise
         
-        # Step 2: Build system prompt
         if system_prompt is None:
             system_prompt = """You are a helpful AI assistant specialized in document understanding and question answering.
 Based on the provided context from the document, answer the user's question accurately and in detail.
 If the information needed to answer the question is not in the context, clearly state that you don't have enough information.
 Always cite the specific parts of the context that support your answer when possible."""
         
-        # Step 3: Format context
         context_text = "\n\n".join([
             f"[Document Passage {i+1}]:\n{chunk}" 
             for i, chunk in enumerate(context_chunks)
         ])
         
-        # Step 4: Build messages
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Document Context:\n\n{context_text}\n\nQuestion: {query}"}
@@ -176,8 +111,7 @@ Always cite the specific parts of the context that support your answer when poss
             logger.info(f"   - Max tokens: {max_tokens}")
             logger.info(f"   - Temperature: {temperature}")
             logger.info(f"   - Stream: {stream}")
-        
-        # Step 5: Generate response
+
         try:
             response = self.generator.generate(
                 messages=messages,
@@ -198,12 +132,6 @@ Always cite the specific parts of the context that support your answer when poss
             raise
     
     def interactive(self):
-        """
-        Interactive RAG chat mode
-        
-        Allows users to ask multiple questions in sequence.
-        Type 'exit' or 'quit' to end session.
-        """
         print("\n" + "=" * 80)
         print("RAG Chat - Document Question Answering")
         print("=" * 80)
@@ -246,10 +174,8 @@ def test_rag_chain():
     print("=" * 80)
     
     try:
-        # Initialize RAG Chain
         rag_chain = RAGChain(top_k=3, verbose=True)
         
-        # Test queries
         test_queries = [
             "What is positional encoding?",
             "Explain the attention mechanism",
@@ -263,10 +189,8 @@ def test_rag_chain():
             print("\n📝 Response (streaming):")
             print("-" * 80)
             
-            # Generate with streaming
             response_stream = rag_chain.generate(query, stream=True, max_tokens=300)
             
-            # Consume the generator and print tokens
             for token in response_stream:
                 print(token, end="", flush=True)
             
@@ -283,9 +207,7 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) > 1 and sys.argv[1] == "interactive":
-        # Interactive mode
         rag_chain = RAGChain(verbose=True)
         rag_chain.interactive()
     else:
-        # Test mode
         test_rag_chain()
