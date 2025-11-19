@@ -2,14 +2,8 @@ import os
 from typing import List, Dict, Optional, Generator
 from pathlib import Path
 import torch
+from llama_cpp import Llama
 
-try:
-    from llama_cpp import Llama
-except ImportError:
-    raise ImportError(
-        "llama-cpp-python is not installed. Please install it using:\n"
-        "pip install llama-cpp-python"
-    )
 
 class DeviceManager: 
     @staticmethod
