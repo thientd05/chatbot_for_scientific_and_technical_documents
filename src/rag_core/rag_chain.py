@@ -87,28 +87,3 @@ Always cite the specific parts of the context that support your answer when poss
             
         except Exception as e:
             raise
-    
-    def interactive(self):
-        print("\n" + "=" * 80)
-        print("RAG Chat - Document Question Answering")
-        print("=" * 80)
-        print("Type 'exit' or 'quit' to end session\n")
-        
-        while True:
-            try:
-                query = input("\n🔍 Query: ").strip()
-                if query.lower() in ["exit", "quit"]:
-                    break
-                if not query:
-                    continue
-
-                print("-" * 80)
-                for token in self.generate(query, stream=True):
-                    print(token, end="", flush=True)
-                
-                print("\n" + "-" * 80)
-                
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                continue
