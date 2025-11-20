@@ -84,68 +84,12 @@ class ChatBot:
         print("=" * 60)
         print(response)
 
-    def display_help(self):
-        """Display help message"""
-        help_text = """
-╔════════════════════════════════════════════════════════════╗
-║       RAG CHATBOT - Interactive Help                       ║
-╚════════════════════════════════════════════════════════════╝
-
-Commands:
-  help    - Show this help message
-  history - Show conversation history
-  clear   - Clear conversation history
-  quit    - Exit the chatbot
-  exit    - Exit the chatbot
-
-Examples of queries:
-  - "What is attention mechanism?"
-  - "Explain transformer architecture"
-  - "How does self-attention work?"
-  - "Tell me about positional encoding"
-
-Tips:
-  - Ask specific questions for better results
-  - The chatbot uses semantic search to find relevant documents
-  - Responses are based on the provided document collection
-  - Type 'quit' or 'exit' to close the application
-
-════════════════════════════════════════════════════════════
-        """
-        print(help_text)
-
-    def show_conversation_history(self):
-        if not self.conversation_history:
-            print("\n No conversation history yet.")
-            return
-        
-        print("\n" + "=" * 60)
-        print("CONVERSATION HISTORY")
-        print("=" * 60)
-        
-        for i, msg in enumerate(self.conversation_history, 1):
-            msg_type = "USER" if msg["type"] == "user" else "ASSISTANT"
-            timestamp = msg["timestamp"].strftime("%H:%M:%S")
-            
-            print(f"\n[{i}] {msg_type} ({timestamp})")
-            print("-" * 60)
-            
-            content = msg["content"]
-            if len(content) > 300:
-                content = content[:300] + "...[truncated]"
-            
-            print(content)
-
-    def clear_history(self):
-        self.conversation_history = []
-        print("\n Conversation history cleared.")
 
     def run(self):
         print("\n" + "╔" + "=" * 58 + "╗")
         print("║" + " " * 15 + "RAG CHATBOT - Interactive Mode" + " " * 10 + "║")
         print("╚" + "=" * 58 + "╝")
         print("\nWelcome to the RAG-based document Q&A chatbot!")
-        print("Type 'help' for commands or just ask a question.")
         print("Type 'quit' or 'exit' to close the application.\n")
         
         try:
@@ -158,28 +102,14 @@ Tips:
                     break
                 
                 if not user_input:
-                    print("Please enter a question or command.")
+                    print("Please enter a question.")
                     continue
                 
                 if user_input.lower() in ["quit", "exit"]:
-                    print("\n Thank you for using the RAG Chatbot. Goodbye!")
+                    print("\n Goodbye!")
                     break
                 
-                elif user_input.lower() == "help":
-                    self.display_help()
-                    continue
-                
-                elif user_input.lower() == "history":
-                    self.show_conversation_history()
-                    continue
-                
-                elif user_input.lower() == "clear":
-                    self.clear_history()
-                    continue
-                
-                print("\n Processing your question...")
-                print("-" * 60)
-                print(" Response (streaming):")
+                print(" Response: ")
                 print("-" * 60)
                 
                 response_stream = self.rag_chain.generate(user_input, stream=True, max_tokens=512)
