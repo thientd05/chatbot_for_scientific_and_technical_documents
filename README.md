@@ -173,4 +173,4 @@ This RAG system provides:
 ✅ **Interactive**: Multi-turn conversation loop  
 ✅ **User-Friendly**: CLI with help and history  
 ✅ **Well-Documented**: Code and usage guides  
-✅ **Production-Ready**: Error handling and logging  
+✅ **Production-Ready**: Error handling and logging   
