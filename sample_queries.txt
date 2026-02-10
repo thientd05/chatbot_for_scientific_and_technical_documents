@@ -1,4 +1,4 @@
 How does the Transformer eliminate recurrence and convolution?
 How does Scaled Dot-Product Attention work, and why divide by √dₖ?
 Why does the Transformer require positional encoding, and why sinusoidal?
-What is the benefit of Multi-Head Attention?
+What is the benefit of Multi-Head Attention? 
