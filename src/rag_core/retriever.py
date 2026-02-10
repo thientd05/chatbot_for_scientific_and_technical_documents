@@ -3,7 +3,7 @@ import json
 import pickle
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
-import numpy as np
+import numpy as np 
 
 from sentence_transformers import SentenceTransformer
 import faiss

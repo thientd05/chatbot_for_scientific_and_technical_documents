@@ -2,7 +2,7 @@ import os
 from typing import List, Dict, Optional, Generator as GeneratorType
 from dataclasses import dataclass
 
-@dataclass
+@dataclass 
 class ChunkMetadata:
     chunk_id: int 
     content: str 
