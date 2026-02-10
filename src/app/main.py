@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ChatBot:
+class ChatBot: 
     def __init__(
         self,
         embeddings_dir: Optional[str] = None,
