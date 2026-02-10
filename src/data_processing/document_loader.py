@@ -12,7 +12,7 @@ class ScientificPaperOCR:
         self,
         gpu_device: str = '0',
         model_name: str = MODEL_NAME,
-        base_size: int = 1280,
+        base_size: int = 1280, 
         image_size: int = 640,
         crop_mode: bool = False
     ):

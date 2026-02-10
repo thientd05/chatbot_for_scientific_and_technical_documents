@@ -66,7 +66,7 @@ class EmbeddingPipeline:
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> Dict: 
         heading_counts = {}
         for metadata in self.metadata_list:
             heading = metadata.heading or 'N/A'
